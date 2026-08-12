@@ -1,0 +1,75 @@
+/* ==========================================================================
+   Gemini Design System & Global Styles
+   ========================================================================== */
+
+:root {
+  /* Gemini Authentic Color Tokens */
+  --gemini-bg: #131314;
+  --gemini-bg-subtle: #17181c;
+  --gemini-surface: #1e1f20;
+  --gemini-surface-hover: #282a2c;
+  --gemini-surface-active: #333538;
+  
+  --gemini-border: rgba(255, 255, 255, 0.08);
+  --gemini-border-focus: #4285f4;
+
+  --gemini-text-primary: #e3e3e3;
+  --gemini-text-secondary: #9aa0a6;
+  --gemini-text-muted: #5f6368;
+
+  --gemini-sparkle-blue: #4285f4;
+  --gemini-sparkle-purple: #9b72cb;
+  --gemini-sparkle-pink: #d96570;
+  --gemini-sparkle-amber: #f2a83b;
+
+  --font-family: 'Google Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+  
+  --transition-fast: 0.15s ease;
+  --transition-smooth: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--gemini-bg);
+  color: var(--gemini-text-primary);
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
