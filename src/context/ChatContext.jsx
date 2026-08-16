@@ -49,6 +49,7 @@ export function ChatProvider({ children }) {
   const [currentStreamingThought, setCurrentStreamingThought] = useState("");
   const [currentStreamingAnswer, setCurrentStreamingAnswer] = useState("");
   const [currentStreamingToolCalls, setCurrentStreamingToolCalls] = useState([]);
+  const [currentStreamingReasoningBlocks, setCurrentStreamingReasoningBlocks] = useState([]);
   const [toast, setToast] = useState(null);
 
   const apiServiceRef = useRef(
@@ -168,6 +169,7 @@ export function ChatProvider({ children }) {
     setCurrentStreamingThought("");
     setCurrentStreamingAnswer("");
     setCurrentStreamingToolCalls([]);
+    setCurrentStreamingReasoningBlocks([]);
     showToast("Generation stopped.", "warning");
   };
 
@@ -250,6 +252,7 @@ export function ChatProvider({ children }) {
     setCurrentStreamingThought("");
     setCurrentStreamingAnswer("");
     setCurrentStreamingToolCalls([]);
+    setCurrentStreamingReasoningBlocks([]);
 
     const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -267,6 +270,9 @@ export function ChatProvider({ children }) {
           },
           onAnswer: (chunk, accumulated) => {
             setCurrentStreamingAnswer(accumulated);
+          },
+          onReasoningBlocksUpdate: (blocks) => {
+            setCurrentStreamingReasoningBlocks(blocks);
           },
           onToolCallStart: (call) => {
             setCurrentStreamingToolCalls((prev) => {
@@ -290,13 +296,14 @@ export function ChatProvider({ children }) {
               return [...prev, completedCall];
             });
           },
-          onComplete: ({ thought, answer, toolCalls }) => {
+          onComplete: ({ thought, answer, toolCalls, reasoningBlocks }) => {
             const assistantMsg = {
               id: Math.random().toString(36).substring(2, 10),
               role: "assistant",
               content: answer,
               thought: thought || "",
               toolCalls: toolCalls || [],
+              reasoningBlocks: reasoningBlocks || [],
               timestamp,
             };
 
@@ -314,6 +321,7 @@ export function ChatProvider({ children }) {
             setCurrentStreamingThought("");
             setCurrentStreamingAnswer("");
             setCurrentStreamingToolCalls([]);
+            setCurrentStreamingReasoningBlocks([]);
             setGeneratingSessionId(null);
           },
           onError: (err) => {
@@ -321,6 +329,7 @@ export function ChatProvider({ children }) {
             setCurrentStreamingToolCalls([]);
             setCurrentStreamingThought("");
             setCurrentStreamingAnswer("");
+            setCurrentStreamingReasoningBlocks([]);
             setGeneratingSessionId(null);
           },
         },
@@ -331,20 +340,23 @@ export function ChatProvider({ children }) {
       setCurrentStreamingToolCalls([]);
       setCurrentStreamingThought("");
       setCurrentStreamingAnswer("");
+      setCurrentStreamingReasoningBlocks([]);
       setGeneratingSessionId(null);
     }
   };
 
   const exportSynapseFile = async () => {
-    const packaged = SynapseStorageService.packageState(
-      sessions,
-      activeSessionId,
-      settings,
-      { displayName, email: user?.email }
-    );
-    const res = await SynapseStorageService.exportToFile(packaged);
-    if (res.success) {
-      showToast(res.message, "success");
+    try {
+      const state = SynapseStorageService.packageState(
+        sessions,
+        activeSessionId,
+        settings,
+        { displayName, email: user?.email }
+      );
+      const res = await SynapseStorageService.exportToFile(state);
+      showToast(res.message, res.success ? "success" : "info");
+    } catch (err) {
+      showToast(`Export Error: ${err.message}`, "error");
     }
   };
 
@@ -383,6 +395,7 @@ export function ChatProvider({ children }) {
         currentStreamingThought,
         currentStreamingAnswer,
         currentStreamingToolCalls,
+        currentStreamingReasoningBlocks,
         stopGeneration,
         exportSynapseFile,
         importSynapseFile,

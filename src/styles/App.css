@@ -803,7 +803,8 @@
   gap: 12px;
 }
 
-/* Tool Call Pills (Thoughtbox Style) */
+/* Tool Call Pills & Reasoning Blocks Flow (Thoughtbox Style) */
+.message-reasoning-blocks-flow,
 .message-tool-calls-group {
   display: flex;
   flex-direction: column;

@@ -16,6 +16,7 @@ export default function ChatArea({ onOpenMobileSidebar, onOpenSettings }) {
     currentStreamingThought,
     currentStreamingAnswer,
     currentStreamingToolCalls,
+    currentStreamingReasoningBlocks,
   } = useChat();
 
   const { user, displayName } = useAuth();
@@ -167,6 +168,7 @@ export default function ChatArea({ onOpenMobileSidebar, onOpenSettings }) {
                 streamingThought={isCurrentSessionGenerating ? currentStreamingThought : ""}
                 streamingAnswer={isCurrentSessionGenerating ? currentStreamingAnswer : ""}
                 streamingToolCalls={isCurrentSessionGenerating ? currentStreamingToolCalls : []}
+                streamingReasoningBlocks={isCurrentSessionGenerating ? currentStreamingReasoningBlocks : []}
               />
             </div>
           </div>

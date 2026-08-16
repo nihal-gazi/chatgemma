@@ -56,5 +56,4 @@ The tool will automatically be:
 
 ## Core Custom Tools
 
-1. **`show_thought`**: Allows the agent to explicitly expose reasoning steps to the user inside the Thoughtbox pill.
-2. **`grep`**: Regex and pattern search across conversation history.
+1. **`grep`**: Regex and pattern search across conversation history.

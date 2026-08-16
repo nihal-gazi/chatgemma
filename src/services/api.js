@@ -117,12 +117,12 @@ export class GemmaApiService {
    * custom Function Calling, and full console logging.
    *
    * @param {Array} messages - Chat message history
-   * @param {Object} callbacks - { onThought, onAnswer, onToolCallStart, onToolCallResult, onComplete, onError }
+   * @param {Object} callbacks - { onThought, onAnswer, onToolCallStart, onToolCallResult, onReasoningBlocksUpdate, onComplete, onError }
    * @param {Object} executionContext - Context passed to custom tools (e.g. sessions, activeSession)
    */
   async streamChat(
     messages,
-    { onThought, onAnswer, onToolCallStart, onToolCallResult, onComplete, onError },
+    { onThought, onAnswer, onToolCallStart, onToolCallResult, onReasoningBlocksUpdate, onComplete, onError },
     executionContext = {}
   ) {
     this.cancelRequest();
@@ -159,7 +159,7 @@ export class GemmaApiService {
         ? { includeServerSideToolInvocations: true }
         : undefined;
 
-    // 2. Dynamic Temporal Anchor & Mandatory show_thought Pre-prompt
+    // 2. Dynamic Temporal Anchor
     const currentDateStr = new Date().toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -172,19 +172,17 @@ export class GemmaApiService {
 
 Current Date: ${currentDateStr}.
 
-MANDATORY PROTOCOL:
-1. show_thought MUST be used ATLEAST ONCE before final response. You may use show_thought any number of times.
-2. You may use any number of tools in sequence (e.g. Google Search, Code Execution, Grep) with arbitrary inputs and outputs.
-3. After all necessary tool calls and data processing are complete, synthesize and output the final answer.
-
-`;
+PROTOCOL:
+1. Use available tools (Google Search, Code Execution, Grep) when external information, search grounding, or data computation is needed.
+2. Synthesize all reasoning and tool results into a clear, helpful final response.`;
 
     // Prepare contents
     let currentContents = this._formatContents(messages);
 
-    let accumulatedThought = "";
     let accumulatedRawThinking = "";
     let accumulatedAnswer = "";
+    const reasoningBlocks = [];
+    let currentThoughtBlock = null;
     const executedToolCalls = [];
     const activeCodeCalls = new Map();
     const searchQueriesTracked = new Set();
@@ -307,7 +305,15 @@ MANDATORY PROTOCOL:
                   for (const q of queries) {
                     if (!searchQueriesTracked.has(q)) {
                       searchQueriesTracked.add(q);
+
+                      // If a thought block was open, close it before tool call
+                      if (currentThoughtBlock) {
+                        currentThoughtBlock.isLive = false;
+                        currentThoughtBlock = null;
+                      }
+
                       const searchCall = {
+                        type: "tool_call",
                         id: Math.random().toString(36).substring(2, 10),
                         name: "google_search",
                         args: { query: q },
@@ -327,7 +333,9 @@ MANDATORY PROTOCOL:
                       };
                       console.log("%c[ChatGemma][Google Search Grounding Pill]", "color: #0284c7; font-weight: bold;", searchCall);
                       executedToolCalls.push(searchCall);
+                      reasoningBlocks.push(searchCall);
                       if (onToolCallResult) onToolCallResult(searchCall);
+                      if (onReasoningBlocksUpdate) onReasoningBlocksUpdate([...reasoningBlocks]);
                     }
                   }
                 }
@@ -340,6 +348,19 @@ MANDATORY PROTOCOL:
                     turnRawThinking += tChunk;
                     accumulatedRawThinking += tChunk;
 
+                    if (!currentThoughtBlock) {
+                      currentThoughtBlock = {
+                        type: "thought",
+                        id: Math.random().toString(36).substring(2, 10),
+                        content: tChunk,
+                        isLive: true,
+                        turn: turnCount,
+                      };
+                      reasoningBlocks.push(currentThoughtBlock);
+                    } else {
+                      currentThoughtBlock.content += tChunk;
+                    }
+
                     if (!isThinkingStreaming) {
                       isThinkingStreaming = true;
                       console.log(
@@ -349,7 +370,14 @@ MANDATORY PROTOCOL:
                     }
 
                     console.log("%c[Original Thought] %c" + tChunk, "color: #a855f7; font-weight: 600;", "color: #d8b4fe; font-family: monospace;");
+                    if (onThought) onThought(tChunk, accumulatedRawThinking);
+                    if (onReasoningBlocksUpdate) onReasoningBlocksUpdate([...reasoningBlocks]);
                   } else {
+                    if (currentThoughtBlock && currentThoughtBlock.isLive) {
+                      currentThoughtBlock.isLive = false;
+                      currentThoughtBlock = null;
+                      if (onReasoningBlocksUpdate) onReasoningBlocksUpdate([...reasoningBlocks]);
+                    }
                     if (isThinkingStreaming) {
                       isThinkingStreaming = false;
                       console.log(
@@ -361,9 +389,14 @@ MANDATORY PROTOCOL:
 
                   // 2. Server-Side Executable Code (Native Code Execution)
                   if (part.executableCode) {
+                    if (currentThoughtBlock) {
+                      currentThoughtBlock.isLive = false;
+                      currentThoughtBlock = null;
+                    }
                     const codeObj = part.executableCode;
                     const callId = codeObj.id || Math.random().toString(36).substring(2, 10);
                     const call = {
+                      type: "tool_call",
                       id: callId,
                       name: "run_code",
                       args: { code: codeObj.code, language: codeObj.language || "PYTHON" },
@@ -371,7 +404,9 @@ MANDATORY PROTOCOL:
                     };
                     console.log("%c[ChatGemma][Native Tool: Code Execution Generated]", "color: #2563eb; font-weight: bold;", call);
                     activeCodeCalls.set(callId, call);
+                    reasoningBlocks.push(call);
                     if (onToolCallStart) onToolCallStart(call);
+                    if (onReasoningBlocksUpdate) onReasoningBlocksUpdate([...reasoningBlocks]);
                   }
 
                   // 3. Server-Side Code Execution Result
@@ -385,6 +420,7 @@ MANDATORY PROTOCOL:
                     };
                     const completedCall = {
                       ...existing,
+                      type: "tool_call",
                       response: {
                         stdout: resObj.output || "",
                         outcome: resObj.outcome || "OUTCOME_OK",
@@ -393,23 +429,45 @@ MANDATORY PROTOCOL:
                     };
                     console.log("%c[ChatGemma][Native Tool: Code Execution Result]", "color: #059669; font-weight: bold;", completedCall);
                     executedToolCalls.push(completedCall);
+
+                    const idx = reasoningBlocks.findIndex((b) => b.id === callId);
+                    if (idx >= 0) {
+                      reasoningBlocks[idx] = completedCall;
+                    } else {
+                      reasoningBlocks.push(completedCall);
+                    }
+
                     if (onToolCallResult) onToolCallResult(completedCall);
+                    if (onReasoningBlocksUpdate) onReasoningBlocksUpdate([...reasoningBlocks]);
                   }
 
-                  // 4. Custom Function / Tool Calls (e.g. show_thought, grep)
+                  // 4. Custom Function / Tool Calls (e.g. grep)
                   if (part.functionCall) {
+                    if (currentThoughtBlock) {
+                      currentThoughtBlock.isLive = false;
+                      currentThoughtBlock = null;
+                    }
                     const fnCall = part.functionCall;
                     const callObj = {
+                      type: "tool_call",
                       id: Math.random().toString(36).substring(2, 10),
                       name: fnCall.name,
                       args: fnCall.args || {},
+                      status: "running",
                     };
                     console.log("%c[ChatGemma][Custom Tool Call Requested by Model]", "color: #d97706; font-weight: bold;", callObj);
                     pendingCustomFunctionCalls.push(callObj);
+                    reasoningBlocks.push(callObj);
+                    if (onToolCallStart) onToolCallStart(callObj);
+                    if (onReasoningBlocksUpdate) onReasoningBlocksUpdate([...reasoningBlocks]);
                   }
 
                   // 5. Regular Text / Answer Tokens
                   if (part.text && !part.thought) {
+                    if (currentThoughtBlock) {
+                      currentThoughtBlock.isLive = false;
+                      currentThoughtBlock = null;
+                    }
                     turnAnswerText += part.text;
                     accumulatedAnswer += part.text;
                     console.log("%c[ChatGemma][Answer Token]", "color: #475569;", part.text);
@@ -423,18 +481,18 @@ MANDATORY PROTOCOL:
           }
         }
 
+        if (currentThoughtBlock) {
+          currentThoughtBlock.isLive = false;
+          currentThoughtBlock = null;
+          if (onReasoningBlocksUpdate) onReasoningBlocksUpdate([...reasoningBlocks]);
+        }
+
         if (isThinkingStreaming) {
           isThinkingStreaming = false;
           console.log(
             "%c[ChatGemma] Original Thinking Stream Complete",
             "color: #a855f7; font-weight: bold; background: rgba(168,85,247,0.12); padding: 2px 6px; border-radius: 4px;"
           );
-        }
-
-        if (turnRawThinking) {
-          console.groupCollapsed(`%c[ChatGemma][Turn ${turnCount} Raw Thinking Summary]`, "color: #9333ea; font-weight: bold;");
-          console.log(turnRawThinking);
-          console.groupEnd();
         }
 
         // If no custom function calls were requested in this turn, we are finished!
@@ -450,23 +508,11 @@ MANDATORY PROTOCOL:
         for (const call of pendingCustomFunctionCalls) {
           console.log(`%c[ChatGemma][Executing Custom Tool: ${call.name}]`, "color: #d97706; font-weight: bold;", call.args);
 
-          if (onToolCallStart) {
-            onToolCallStart(call);
-          }
-
-          const toolContext = {
-            ...executionContext,
-            onShowThought: (thoughtMarkdown) => {
-              accumulatedThought = thoughtMarkdown;
-              console.log("%c[ChatGemma][Tool: show_thought UI Content Updated]", "color: #a855f7; font-weight: bold;", thoughtMarkdown);
-              if (onThought) onThought(thoughtMarkdown, accumulatedThought);
-            },
-          };
-
-          const toolResponse = await toolRegistry.execute(call.name, call.args, toolContext);
+          const toolResponse = await toolRegistry.execute(call.name, call.args, executionContext);
 
           const completedCall = {
             ...call,
+            type: "tool_call",
             response: toolResponse,
             status: toolResponse?.error ? "error" : "completed",
           };
@@ -475,8 +521,18 @@ MANDATORY PROTOCOL:
 
           executedToolCalls.push(completedCall);
 
+          const idx = reasoningBlocks.findIndex((b) => b.id === call.id);
+          if (idx >= 0) {
+            reasoningBlocks[idx] = completedCall;
+          } else {
+            reasoningBlocks.push(completedCall);
+          }
+
           if (onToolCallResult) {
             onToolCallResult(completedCall);
+          }
+          if (onReasoningBlocksUpdate) {
+            onReasoningBlocksUpdate([...reasoningBlocks]);
           }
 
           currentTurnModelParts.push({
@@ -518,30 +574,35 @@ MANDATORY PROTOCOL:
     } finally {
       this.abortController = null;
 
+      if (currentThoughtBlock) {
+        currentThoughtBlock.isLive = false;
+        currentThoughtBlock = null;
+      }
+
       console.group("%c[ChatGemma][Generation Completed Successfully]", "color: #16a34a; font-weight: bold;");
       if (accumulatedRawThinking) {
         console.log("%c[Original Internal Thinking]", "color: #a855f7; font-weight: bold;", accumulatedRawThinking);
       }
-      if (accumulatedThought) {
-        console.log("%c[show_thought Content]", "color: #c084fc; font-weight: bold;", accumulatedThought);
-      }
+      console.log("%c[Chronological Reasoning Blocks]", "color: #9333ea; font-weight: bold;", reasoningBlocks);
       console.log("%c[All Executed Tool Calls in Sequence]", "color: #3b82f6; font-weight: bold;", executedToolCalls);
       console.log("%c[Final Answer]", "color: #10b981; font-weight: bold;", accumulatedAnswer);
       console.groupEnd();
 
       if (onComplete) {
         onComplete({
-          thought: accumulatedThought,
+          thought: accumulatedRawThinking,
           answer: accumulatedAnswer,
           toolCalls: executedToolCalls,
+          reasoningBlocks: reasoningBlocks,
         });
       }
     }
 
     return {
-      thought: accumulatedThought,
+      thought: accumulatedRawThinking,
       answer: accumulatedAnswer,
       toolCalls: executedToolCalls,
+      reasoningBlocks: reasoningBlocks,
     };
   }
 }

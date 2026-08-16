@@ -142,21 +142,48 @@ export default function MessageItem({ message, index, isLastUserMessage, isGener
     );
   }
 
+  const hasReasoningBlocks = message.reasoningBlocks && message.reasoningBlocks.length > 0;
+
   return (
     <div className="assistant-message-row">
       <div className="assistant-response-container">
-        {/* Tool Call Pills (if function calls occurred) */}
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="message-tool-calls-group">
-            {message.toolCalls.map((tc, tcIdx) => (
-              <ToolCallPill key={tc.id || tcIdx} toolCall={tc} />
-            ))}
+        {/* 1. Chronological Reasoning Blocks (Native Thoughts & Tool Calls in Sequence) */}
+        {hasReasoningBlocks ? (
+          <div className="message-reasoning-blocks-flow">
+            {message.reasoningBlocks.map((block, bIdx) => {
+              if (block.type === "thought") {
+                return (
+                  <ThinkingBlock
+                    key={block.id || bIdx}
+                    thought={block.content}
+                    isLive={false}
+                  />
+                );
+              }
+              if (block.type === "tool_call") {
+                return (
+                  <ToolCallPill key={block.id || bIdx} toolCall={block} />
+                );
+              }
+              return null;
+            })}
           </div>
-        )}
+        ) : (
+          <>
+            {/* Legacy Fallback: Tool Call Pills */}
+            {message.toolCalls && message.toolCalls.length > 0 && (
+              <div className="message-tool-calls-group">
+                {message.toolCalls.map((tc, tcIdx) => (
+                  <ToolCallPill key={tc.id || tcIdx} toolCall={tc} />
+                ))}
+              </div>
+            )}
 
-        {/* Collapsible Thinking Process if thought tokens exist */}
-        {message.thought && (
-          <ThinkingBlock thought={message.thought} isLive={false} />
+            {/* Legacy Fallback: Collapsible Thinking Process */}
+            {message.thought && (
+              <ThinkingBlock thought={message.thought} isLive={false} />
+            )}
+          </>
         )}
 
         {/* Main Response Markdown */}

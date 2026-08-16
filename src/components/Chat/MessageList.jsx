@@ -11,6 +11,7 @@ export default function MessageList({
   streamingThought,
   streamingAnswer,
   streamingToolCalls = [],
+  streamingReasoningBlocks = [],
 }) {
   // Find the index of the last user message to restrict editing to ONLY the last sent message
   let lastUserMessageIndex = -1;
@@ -20,6 +21,8 @@ export default function MessageList({
       break;
     }
   }
+
+  const hasReasoningBlocks = streamingReasoningBlocks && streamingReasoningBlocks.length > 0;
 
   return (
     <div className="messages-stream-list">
@@ -37,26 +40,35 @@ export default function MessageList({
       {isGenerating && (
         <div className="assistant-message-row streaming-row">
           <div className="assistant-response-container">
-            {/* Live Tool Calls (Executing / Completed in current turn) */}
-            {streamingToolCalls && streamingToolCalls.length > 0 && (
-              <div className="message-tool-calls-group">
-                {streamingToolCalls.map((tc, tcIdx) => (
-                  <ToolCallPill key={tc.id || tcIdx} toolCall={tc} />
-                ))}
+            {/* 1. Chronological Reasoning Blocks (Native Thoughts & Tool Calls in Sequence) */}
+            {hasReasoningBlocks ? (
+              <div className="message-reasoning-blocks-flow">
+                {streamingReasoningBlocks.map((block, bIdx) => {
+                  if (block.type === "thought") {
+                    return (
+                      <ThinkingBlock
+                        key={block.id || bIdx}
+                        thought={block.content}
+                        isLive={block.isLive !== false}
+                      />
+                    );
+                  }
+                  if (block.type === "tool_call") {
+                    return (
+                      <ToolCallPill key={block.id || bIdx} toolCall={block} />
+                    );
+                  }
+                  return null;
+                })}
               </div>
-            )}
-
-            {/* Live Thinking Block */}
-            {streamingThought ? (
-              <ThinkingBlock thought={streamingThought} isLive={!streamingAnswer} />
-            ) : !streamingAnswer && (!streamingToolCalls || streamingToolCalls.length === 0) ? (
+            ) : !streamingAnswer ? (
               <div className="live-thinking-shimmer">
                 <ThinkingAnimation />
                 <span>Thinking...</span>
               </div>
             ) : null}
 
-            {/* Live Answer Markdown */}
+            {/* 2. Live Answer Markdown */}
             {streamingAnswer && <MarkdownRenderer content={streamingAnswer} />}
           </div>
         </div>
