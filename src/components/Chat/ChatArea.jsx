@@ -12,30 +12,91 @@ export default function ChatArea({ onOpenMobileSidebar, onOpenSettings }) {
     activeSession,
     createNewSession,
     isGenerating,
+    generatingSessionId,
     currentStreamingThought,
     currentStreamingAnswer,
-    currentStreamingToolExecutions,
+    currentStreamingToolCalls,
   } = useChat();
 
   const { user, displayName } = useAuth();
 
   const scrollRef = useRef(null);
-  const hasMessages = activeSession && activeSession.messages.length > 0;
+  const userScrolledUpRef = useRef(false);
+  const prevMessagesCountRef = useRef(activeSession?.messages?.length || 0);
+  const prevSessionIdRef = useRef(activeSession?.id);
+
+  const isCurrentSessionGenerating = Boolean(
+    activeSession && generatingSessionId === activeSession.id
+  );
+  const isGeneratingRef = useRef(isCurrentSessionGenerating);
+
+  const hasMessages = Boolean(activeSession && activeSession.messages.length > 0);
+
+  // Track if user intentionally scrolled up
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    userScrolledUpRef.current = distanceFromBottom > 90;
+  };
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    // 1. Detect if the user switched to a different session
+    const isSessionSwitched = prevSessionIdRef.current !== activeSession?.id;
+    prevSessionIdRef.current = activeSession?.id;
+
+    if (isSessionSwitched) {
+      userScrolledUpRef.current = false;
+      prevMessagesCountRef.current = activeSession?.messages?.length || 0;
+      isGeneratingRef.current = isCurrentSessionGenerating;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+
+    const currentMsgCount = activeSession?.messages?.length || 0;
+    const prevMsgCount = prevMessagesCountRef.current;
+    prevMessagesCountRef.current = currentMsgCount;
+
+    const wasGenerating = isGeneratingRef.current;
+    isGeneratingRef.current = isCurrentSessionGenerating;
+
+    // 2. If generation just finished, DO NOT scroll down - keep user position!
+    if (wasGenerating && !isCurrentSessionGenerating) {
+      return;
+    }
+
+    // 3. If user sent a new prompt, scroll to bottom
+    const lastMsg = activeSession?.messages?.[activeSession.messages.length - 1];
+    const isNewUserPrompt = currentMsgCount > prevMsgCount && lastMsg?.role === "user";
+
+    if (isNewUserPrompt) {
+      userScrolledUpRef.current = false;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+
+    // 4. During live streaming generation, only follow along if user has not scrolled up
+    if (isCurrentSessionGenerating && !userScrolledUpRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [
+    activeSession?.id,
     activeSession?.messages,
     currentStreamingThought,
     currentStreamingAnswer,
-    currentStreamingToolExecutions,
-    isGenerating,
+    currentStreamingToolCalls,
+    isCurrentSessionGenerating,
   ]);
 
   return (
-    <main className={`gemini-chat-area ${hasMessages || isGenerating ? "chat-started" : ""}`}>
+    <main
+      className={`gemini-chat-area ${
+        hasMessages || isCurrentSessionGenerating ? "chat-started" : ""
+      }`}
+    >
       {/* Top Header Bar */}
       <header className="chat-top-header">
         <div className="header-left-group">
@@ -64,7 +125,7 @@ export default function ChatArea({ onOpenMobileSidebar, onOpenSettings }) {
             <SquarePen size={20} />
           </button>
 
-          {/* On mobile: If chat exists, show 3-dots menu button. Otherwise show user avatar */}
+          {/* On mobile: If chat exists, show 3-dots menu button. Otherwise in new chat, show user avatar */}
           {hasMessages ? (
             <button
               className="header-action-icon-btn mobile-more-btn"
@@ -94,18 +155,18 @@ export default function ChatArea({ onOpenMobileSidebar, onOpenSettings }) {
       </header>
 
       {/* Main Viewport */}
-      {!hasMessages && !isGenerating ? (
+      {!hasMessages && !isCurrentSessionGenerating ? (
         <EmptyState />
       ) : (
         <>
-          <div className="chat-scroll-container" ref={scrollRef}>
+          <div className="chat-scroll-container" ref={scrollRef} onScroll={handleScroll}>
             <div className="chat-content-constrained">
               <MessageList
                 messages={activeSession.messages}
-                isGenerating={isGenerating}
-                streamingThought={currentStreamingThought}
-                streamingAnswer={currentStreamingAnswer}
-                streamingToolExecutions={currentStreamingToolExecutions}
+                isGenerating={isCurrentSessionGenerating}
+                streamingThought={isCurrentSessionGenerating ? currentStreamingThought : ""}
+                streamingAnswer={isCurrentSessionGenerating ? currentStreamingAnswer : ""}
+                streamingToolCalls={isCurrentSessionGenerating ? currentStreamingToolCalls : []}
               />
             </div>
           </div>

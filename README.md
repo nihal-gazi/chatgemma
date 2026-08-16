@@ -4,7 +4,7 @@ A modern, modular **React + Vite** web application for **ChatGemma** featuring G
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
 1. **Gemini Dark Theme UI Layout:**
    - Left Sidebar with Sparkle logo, "+ New chat", "Search chats", "Recents" session list, and Google user profile card.
@@ -33,7 +33,7 @@ A modern, modular **React + Vite** web application for **ChatGemma** featuring G
 
 ---
 
-## 📁 Modular Directory Structure
+## Modular Directory Structure
 
 ```
 chatgemma_web/
@@ -69,6 +69,7 @@ chatgemma_web/
     │   │   ├── MessageList.jsx
     │   │   ├── MessageItem.jsx
     │   │   ├── ThinkingBlock.jsx # Collapsible reasoning accordion
+    │   │   ├── ThinkingAnimation.jsx # Custom geometric thinking animation
     │   │   ├── MarkdownRenderer.jsx # Code highlighting with copy button
     │   │   └── MessageActions.jsx # Thumbs up/down, Copy, Retry
     │   ├── Input/
@@ -85,7 +86,7 @@ chatgemma_web/
 
 ---
 
-## 🚀 Running the App
+## Running the App
 
 ```bash
 cd chatgemma_web

@@ -3,8 +3,8 @@
  */
 
 export const CONFIG = {
-  // Default API Key
-  defaultApiKey: "",
+  // Default API Key (Set via Settings modal or .env VITE_GEMINI_API_KEY)
+  defaultApiKey: import.meta.env.VITE_GEMINI_API_KEY || "",
 
   // Default Model
   defaultModelId: "gemma-4-31b-it-high",

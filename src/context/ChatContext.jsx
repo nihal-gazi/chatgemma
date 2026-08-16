@@ -3,7 +3,6 @@ import { CONFIG } from "../config/config.js";
 import { GemmaApiService } from "../services/api.js";
 import { SynapseStorageService } from "../services/storage.js";
 import { CloudSyncService } from "../services/firestore.js";
-import { KnowledgeGraphStore } from "../services/knowledgeGraph.js";
 import { useAuth } from "./AuthContext.jsx";
 
 const ChatContext = createContext(null);
@@ -11,12 +10,8 @@ const ChatContext = createContext(null);
 export function ChatProvider({ children }) {
   const { user, displayName } = useAuth();
 
-  // Initialize Knowledge Graphs
-  const globalKGRef = useRef(new KnowledgeGraphStore("global_knowledge_graph"));
-  const userKGRef = useRef(new KnowledgeGraphStore("user_knowledge_graph"));
-  const [kgVersion, setKgVersion] = useState(0); // Trigger re-renders when graph updates
-
   // Load Initial State from LocalStorage backup
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const [sessions, setSessions] = useState(() => {
     const backup = SynapseStorageService.loadLocalBackup();
     if (backup?.sessions && backup.sessions.length > 0) {
@@ -39,16 +34,6 @@ export function ChatProvider({ children }) {
     return backup?.activeSessionId || sessions[0]?.id || null;
   });
 
-  const [scratchPad, setScratchPad] = useState(() => {
-    const backup = SynapseStorageService.loadLocalBackup();
-    return backup?.scratchPad || "";
-  });
-
-  const [kHistory, setKHistory] = useState(() => {
-    const backup = SynapseStorageService.loadLocalBackup();
-    return backup?.kHistory !== undefined ? backup.kHistory : 100;
-  });
-
   const [settings, setSettings] = useState(() => {
     const backup = SynapseStorageService.loadLocalBackup();
     return {
@@ -59,41 +44,25 @@ export function ChatProvider({ children }) {
     };
   });
 
-  // Restore Knowledge Graphs from local storage on mount
-  useEffect(() => {
-    try {
-      const backup = SynapseStorageService.loadLocalBackup();
-      if (backup?.globalKnowledgeGraph) {
-        globalKGRef.current.importJson(backup.globalKnowledgeGraph);
-      }
-      if (backup?.userKnowledgeGraph) {
-        userKGRef.current.importJson(backup.userKnowledgeGraph);
-      }
-      setKgVersion((v) => v + 1);
-    } catch (e) {
-      console.warn("Failed to restore knowledge graphs from backup:", e);
-    }
-  }, []);
-
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingSessionId, setGeneratingSessionId] = useState(null);
+  const isGenerating = Boolean(generatingSessionId);
   const [currentStreamingThought, setCurrentStreamingThought] = useState("");
   const [currentStreamingAnswer, setCurrentStreamingAnswer] = useState("");
-  const [currentStreamingToolExecutions, setCurrentStreamingToolExecutions] = useState([]);
+  const [currentStreamingToolCalls, setCurrentStreamingToolCalls] = useState([]);
   const [toast, setToast] = useState(null);
 
   const apiServiceRef = useRef(
-    new GemmaApiService(settings.apiKey, settings.modelId, settings.systemPrompt, { kHistory })
+    new GemmaApiService(settings.apiKey, settings.modelId, settings.systemPrompt)
   );
 
-  // Update API service when settings or kHistory change
+  // Update API service when settings change
   useEffect(() => {
     apiServiceRef.current.updateConfig({
       apiKey: settings.apiKey,
       modelId: settings.modelId,
       systemPrompt: settings.systemPrompt,
-      kHistory: kHistory,
     });
-  }, [settings, kHistory]);
+  }, [settings]);
 
   // Show temporary toast
   const showToast = (message, type = "info") => {
@@ -106,25 +75,19 @@ export function ChatProvider({ children }) {
 
   // Local storage auto-backup & Cloud Sync on changes
   useEffect(() => {
-    const state = {
-      ...SynapseStorageService.packageState(
-        sessions,
-        activeSessionId,
-        settings,
-        { displayName, email: user?.email }
-      ),
-      scratchPad,
-      kHistory,
-      globalKnowledgeGraph: globalKGRef.current.exportJson("all"),
-      userKnowledgeGraph: userKGRef.current.exportJson("all"),
-    };
-
+    const state = SynapseStorageService.packageState(
+      sessions,
+      activeSessionId,
+      settings,
+      { displayName, email: user?.email }
+    );
     SynapseStorageService.saveLocalBackup(state);
 
+    // If cloud sync is enabled and user is logged in
     if (settings.cloudSyncEnabled && user?.uid) {
       CloudSyncService.saveUserData(user.uid, state);
     }
-  }, [sessions, activeSessionId, settings, user, displayName, scratchPad, kHistory, kgVersion]);
+  }, [sessions, activeSessionId, settings, user, displayName]);
 
   // Load from Cloud if user logs in and cloud sync is enabled
   useEffect(() => {
@@ -138,20 +101,7 @@ export function ChatProvider({ children }) {
           if (cloudData.settings) {
             setSettings((prev) => ({ ...prev, ...cloudData.settings }));
           }
-          if (cloudData.scratchPad !== undefined) {
-            setScratchPad(cloudData.scratchPad);
-          }
-          if (cloudData.kHistory !== undefined) {
-            setKHistory(cloudData.kHistory);
-          }
-          if (cloudData.globalKnowledgeGraph) {
-            globalKGRef.current.importJson(cloudData.globalKnowledgeGraph);
-          }
-          if (cloudData.userKnowledgeGraph) {
-            userKGRef.current.importJson(cloudData.userKnowledgeGraph);
-          }
-          setKgVersion((v) => v + 1);
-          showToast("Cloud chat history & Knowledge Graphs synchronized", "success");
+          showToast("Cloud chat history synchronized", "success");
         }
       });
     }
@@ -212,51 +162,17 @@ export function ChatProvider({ children }) {
     setSettings((prev) => ({ ...prev, ...newSettings }));
   };
 
-  const updateScratchPad = (newContent) => {
-    setScratchPad(newContent);
-  };
-
-  const updateKHistory = (newK) => {
-    const val = Math.max(1, parseInt(newK, 10) || 100);
-    setKHistory(val);
-  };
-
   const stopGeneration = () => {
     apiServiceRef.current.cancelRequest();
-    setIsGenerating(false);
+    setGeneratingSessionId(null);
+    setCurrentStreamingThought("");
+    setCurrentStreamingAnswer("");
+    setCurrentStreamingToolCalls([]);
     showToast("Generation stopped.", "warning");
   };
 
   /**
-   * Helper to trigger download of Knowledge Graph JSON files.
-   */
-  const downloadGraphJson = (graphType = "global", view = "all") => {
-    const kg = graphType === "user" ? userKGRef.current : globalKGRef.current;
-    const data = kg.exportJson(view);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${graphType}_${view}_graph.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast(`Downloaded ${graphType}_${view}_graph.json`, "success");
-  };
-
-  const clearKnowledgeGraph = (graphType = "global") => {
-    if (graphType === "user") {
-      userKGRef.current.clear();
-    } else {
-      globalKGRef.current.clear();
-    }
-    setKgVersion((v) => v + 1);
-    showToast(`Cleared ${graphType} knowledge graph.`, "info");
-  };
-
-  /**
-   * Send a prompt in active session and stream response with tool executions.
+   * Send a prompt in active session and stream response with thought separation.
    */
   const sendMessage = async (promptText) => {
     if (!promptText || !promptText.trim() || isGenerating) return;
@@ -330,25 +246,19 @@ export function ChatProvider({ children }) {
   };
 
   const _executeStream = async (sessionId, messageHistory) => {
-    setIsGenerating(true);
+    setGeneratingSessionId(sessionId);
     setCurrentStreamingThought("");
     setCurrentStreamingAnswer("");
-    setCurrentStreamingToolExecutions([]);
+    setCurrentStreamingToolCalls([]);
 
     const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-    const toolContext = {
-      globalKG: globalKGRef.current,
-      userKG: userKGRef.current,
-      scratchPad,
-      currentSessionId: sessionId,
-      currentSession: activeSession,
-      allSessions: sessions,
-      onKnowledgeGraphUpdate: () => setKgVersion((v) => v + 1),
-      onScratchPadUpdate: (newPad) => setScratchPad(newPad),
-    };
-
     try {
+      const executionContext = {
+        activeSession,
+        sessions,
+      };
+
       await apiServiceRef.current.streamChat(
         messageHistory,
         {
@@ -358,16 +268,35 @@ export function ChatProvider({ children }) {
           onAnswer: (chunk, accumulated) => {
             setCurrentStreamingAnswer(accumulated);
           },
-          onToolExecution: (executionRecord) => {
-            setCurrentStreamingToolExecutions((prev) => [...prev, executionRecord]);
+          onToolCallStart: (call) => {
+            setCurrentStreamingToolCalls((prev) => {
+              const idx = prev.findIndex((c) => c.id === call.id);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = { ...updated[idx], ...call, status: "running" };
+                return updated;
+              }
+              return [...prev, { ...call, status: "running" }];
+            });
           },
-          onComplete: ({ thought, answer, toolExecutions }) => {
+          onToolCallResult: (completedCall) => {
+            setCurrentStreamingToolCalls((prev) => {
+              const idx = prev.findIndex((c) => c.id === completedCall.id);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = { ...updated[idx], ...completedCall };
+                return updated;
+              }
+              return [...prev, completedCall];
+            });
+          },
+          onComplete: ({ thought, answer, toolCalls }) => {
             const assistantMsg = {
               id: Math.random().toString(36).substring(2, 10),
               role: "assistant",
               content: answer,
               thought: thought || "",
-              toolExecutions: toolExecutions || [],
+              toolCalls: toolCalls || [],
               timestamp,
             };
 
@@ -384,35 +313,35 @@ export function ChatProvider({ children }) {
             );
             setCurrentStreamingThought("");
             setCurrentStreamingAnswer("");
-            setCurrentStreamingToolExecutions([]);
-            setIsGenerating(false);
+            setCurrentStreamingToolCalls([]);
+            setGeneratingSessionId(null);
           },
           onError: (err) => {
             showToast(`Error: ${err.message}`, "error");
-            setIsGenerating(false);
+            setCurrentStreamingToolCalls([]);
+            setCurrentStreamingThought("");
+            setCurrentStreamingAnswer("");
+            setGeneratingSessionId(null);
           },
         },
-        toolContext
+        executionContext
       );
     } catch (err) {
       showToast(`Generation failed: ${err.message}`, "error");
-      setIsGenerating(false);
+      setCurrentStreamingToolCalls([]);
+      setCurrentStreamingThought("");
+      setCurrentStreamingAnswer("");
+      setGeneratingSessionId(null);
     }
   };
 
   const exportSynapseFile = async () => {
-    const packaged = {
-      ...SynapseStorageService.packageState(
-        sessions,
-        activeSessionId,
-        settings,
-        { displayName, email: user?.email }
-      ),
-      scratchPad,
-      kHistory,
-      globalKnowledgeGraph: globalKGRef.current.exportJson("all"),
-      userKnowledgeGraph: userKGRef.current.exportJson("all"),
-    };
+    const packaged = SynapseStorageService.packageState(
+      sessions,
+      activeSessionId,
+      settings,
+      { displayName, email: user?.email }
+    );
     const res = await SynapseStorageService.exportToFile(packaged);
     if (res.success) {
       showToast(res.message, "success");
@@ -429,19 +358,6 @@ export function ChatProvider({ children }) {
       if (imported.settings) {
         setSettings((prev) => ({ ...prev, ...imported.settings }));
       }
-      if (imported.scratchPad !== undefined) {
-        setScratchPad(imported.scratchPad);
-      }
-      if (imported.kHistory !== undefined) {
-        setKHistory(imported.kHistory);
-      }
-      if (imported.globalKnowledgeGraph) {
-        globalKGRef.current.importJson(imported.globalKnowledgeGraph);
-      }
-      if (imported.userKnowledgeGraph) {
-        userKGRef.current.importJson(imported.userKnowledgeGraph);
-      }
-      setKgVersion((v) => v + 1);
       showToast("userdat.synapse loaded successfully!", "success");
     } catch (err) {
       showToast(`Import Error: ${err.message}`, "error");
@@ -456,15 +372,6 @@ export function ChatProvider({ children }) {
         activeSession,
         settings,
         updateSettings,
-        scratchPad,
-        updateScratchPad,
-        kHistory,
-        updateKHistory,
-        globalKG: globalKGRef.current,
-        userKG: userKGRef.current,
-        kgVersion,
-        downloadGraphJson,
-        clearKnowledgeGraph,
         createNewSession,
         switchSession,
         deleteSession,
@@ -472,9 +379,10 @@ export function ChatProvider({ children }) {
         sendMessage,
         editMessageAndRegenerate,
         isGenerating,
+        generatingSessionId,
         currentStreamingThought,
         currentStreamingAnswer,
-        currentStreamingToolExecutions,
+        currentStreamingToolCalls,
         stopGeneration,
         exportSynapseFile,
         importSynapseFile,

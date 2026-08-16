@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Pencil, Copy, Check, ChevronDown, ChevronUp } from "../Icons/index.jsx";
 import ThinkingBlock from "./ThinkingBlock.jsx";
-import ToolExecutionBlock from "./ToolExecutionBlock.jsx";
+import ToolCallPill from "./ToolCallPill.jsx";
 import MarkdownRenderer from "./MarkdownRenderer.jsx";
 import MessageActions from "./MessageActions.jsx";
 import { useChat } from "../../context/ChatContext.jsx";
@@ -102,7 +102,7 @@ export default function MessageItem({ message, index, isLastUserMessage, isGener
           <div className={`user-bubble-container ${isLong && !isExpanded ? "collapsed-prompt" : ""}`}>
             <div className="user-bubble-content">{message.content}</div>
 
-            {/* Expand / Collapse toggle for long prompt bubbles */}
+            {/* Expand / Collapse toggle for long prompt bubbles (Image 3 & 4 style) */}
             {isLong && (
               <button
                 type="button"
@@ -145,18 +145,18 @@ export default function MessageItem({ message, index, isLastUserMessage, isGener
   return (
     <div className="assistant-message-row">
       <div className="assistant-response-container">
-        {/* Curated Thinking Block (shown only if show_thought was invoked) */}
-        {message.thought && (
-          <ThinkingBlock thought={message.thought} isLive={false} />
-        )}
-
-        {/* Expandable Tool Execution Pills */}
-        {Array.isArray(message.toolExecutions) && message.toolExecutions.length > 0 && (
-          <div className="message-tool-executions-list">
-            {message.toolExecutions.map((exec, i) => (
-              <ToolExecutionBlock key={i} execution={exec} />
+        {/* Tool Call Pills (if function calls occurred) */}
+        {message.toolCalls && message.toolCalls.length > 0 && (
+          <div className="message-tool-calls-group">
+            {message.toolCalls.map((tc, tcIdx) => (
+              <ToolCallPill key={tc.id || tcIdx} toolCall={tc} />
             ))}
           </div>
+        )}
+
+        {/* Collapsible Thinking Process if thought tokens exist */}
+        {message.thought && (
+          <ThinkingBlock thought={message.thought} isLive={false} />
         )}
 
         {/* Main Response Markdown */}

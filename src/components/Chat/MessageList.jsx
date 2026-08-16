@@ -1,7 +1,8 @@
 import React from "react";
 import MessageItem from "./MessageItem.jsx";
 import ThinkingBlock from "./ThinkingBlock.jsx";
-import ToolExecutionBlock from "./ToolExecutionBlock.jsx";
+import ThinkingAnimation from "./ThinkingAnimation.jsx";
+import ToolCallPill from "./ToolCallPill.jsx";
 import MarkdownRenderer from "./MarkdownRenderer.jsx";
 
 export default function MessageList({
@@ -9,9 +10,9 @@ export default function MessageList({
   isGenerating,
   streamingThought,
   streamingAnswer,
-  streamingToolExecutions = [],
+  streamingToolCalls = [],
 }) {
-  // Find index of last user message for in-place editing
+  // Find the index of the last user message to restrict editing to ONLY the last sent message
   let lastUserMessageIndex = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === "user") {
@@ -36,24 +37,24 @@ export default function MessageList({
       {isGenerating && (
         <div className="assistant-message-row streaming-row">
           <div className="assistant-response-container">
-            {/* Live Curated Thinking Block */}
-            {streamingThought ? (
-              <ThinkingBlock thought={streamingThought} isLive={!streamingAnswer} />
-            ) : !streamingAnswer && streamingToolExecutions.length === 0 ? (
-              <div className="live-thinking-shimmer">
-                <div className="gemini-pulse-dot" />
-                <span>Thinking...</span>
-              </div>
-            ) : null}
-
-            {/* Live Tool Execution Pills */}
-            {streamingToolExecutions.length > 0 && (
-              <div className="message-tool-executions-list">
-                {streamingToolExecutions.map((exec, i) => (
-                  <ToolExecutionBlock key={i} execution={exec} />
+            {/* Live Tool Calls (Executing / Completed in current turn) */}
+            {streamingToolCalls && streamingToolCalls.length > 0 && (
+              <div className="message-tool-calls-group">
+                {streamingToolCalls.map((tc, tcIdx) => (
+                  <ToolCallPill key={tc.id || tcIdx} toolCall={tc} />
                 ))}
               </div>
             )}
+
+            {/* Live Thinking Block */}
+            {streamingThought ? (
+              <ThinkingBlock thought={streamingThought} isLive={!streamingAnswer} />
+            ) : !streamingAnswer && (!streamingToolCalls || streamingToolCalls.length === 0) ? (
+              <div className="live-thinking-shimmer">
+                <ThinkingAnimation />
+                <span>Thinking...</span>
+              </div>
+            ) : null}
 
             {/* Live Answer Markdown */}
             {streamingAnswer && <MarkdownRenderer content={streamingAnswer} />}
