@@ -602,10 +602,14 @@
 .chat-scroll-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
   height: 100%;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   scroll-behavior: smooth;
   overscroll-behavior-y: contain;
 }
@@ -613,15 +617,20 @@
 .chat-content-constrained {
   max-width: 718px;
   width: 100%;
+  min-width: 0;
   margin: 0 auto;
   padding: 56px 24px 28px 24px;
   flex: 1;
+  box-sizing: border-box;
 }
 
 .messages-stream-list {
   display: flex;
   flex-direction: column;
   gap: 32px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* User Message Row */
@@ -793,11 +802,15 @@
 .assistant-message-row {
   display: flex;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   animation: fadeIn 0.25s ease;
 }
 
 .assistant-response-container {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1390,13 +1403,18 @@
 }
 
 /* ==========================================================================
-   3. Markdown Body
+   3. Markdown Body & Overflow Containment
    ========================================================================== */
 
 .gemini-markdown-body {
   color: rgb(227, 227, 227);
   font-size: 1rem;
   line-height: 1.7;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .gemini-markdown-body h1,
@@ -1409,11 +1427,15 @@
   margin-top: 1.4em;
   margin-bottom: 0.5em;
   color: rgb(216, 216, 216);
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .gemini-markdown-body p {
   margin-bottom: 1em;
   color: rgb(227, 227, 227);
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .gemini-markdown-body blockquote {
@@ -1429,45 +1451,125 @@
   margin: 20px 0;
 }
 
+/* ==========================================================================
+   Table Scroll Overflow Containment
+   ========================================================================== */
+
+.table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 16px 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.015);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.table-container::-webkit-scrollbar {
+  height: 5px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.table-container table,
 .gemini-markdown-body table {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  overflow: hidden;
-  margin: 16px 0;
+  min-width: 100%;
+  border-collapse: collapse;
+  margin: 0;
   font-size: 0.92rem;
 }
 
+.table-container th,
+.table-container td,
 .gemini-markdown-body th,
 .gemini-markdown-body td {
   padding: 10px 14px;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   border-right: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: nowrap; /* Keep table cells cleanly readable, enabling smooth horizontal scroll */
 }
 
+.table-container th:last-child,
+.table-container td:last-child,
 .gemini-markdown-body th:last-child,
 .gemini-markdown-body td:last-child {
   border-right: none;
 }
 
+.table-container tr:last-child td,
 .gemini-markdown-body tr:last-child td {
   border-bottom: none;
 }
 
+.table-container th,
 .gemini-markdown-body th {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
   font-weight: 600;
   color: rgb(216, 216, 216);
 }
 
-.katex-display {
-  margin: 14px 0 !important;
+/* ==========================================================================
+   LaTeX Math Scroll Overflow (KaTeX)
+   ========================================================================== */
+
+/* Inline Math: Wraps long math without breaking line flow or blowing out viewport */
+.katex-inline-wrapper {
+  display: inline-block;
+  max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 6px 0;
+  vertical-align: -0.25em;
+  padding: 1px 3px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.katex-inline-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.gemini-markdown-body .katex {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: -0.2em;
+}
+
+/* Block / Display Math */
+.katex-display-wrapper,
+.katex-display {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 14px 0 !important;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.katex-display-wrapper::-webkit-scrollbar,
+.katex-display::-webkit-scrollbar {
+  height: 5px;
+}
+
+.katex-display-wrapper::-webkit-scrollbar-thumb,
+.katex-display::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 
 .gemini-markdown-body ul,

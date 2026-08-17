@@ -74,6 +74,13 @@ renderer.code = function (tokenOrText, langArg) {
   `;
 };
 
+// Custom table renderer to wrap all tables in a scrollable container
+const defaultTableRenderer = marked.Renderer.prototype.table;
+renderer.table = function (...args) {
+  const html = defaultTableRenderer.apply(this, args);
+  return `<div class="table-container">${html}</div>`;
+};
+
 // 1. Block Math Extension: $$...$$ or \[...\]
 const blockMathExtension = {
   name: "blockMath",
@@ -109,7 +116,7 @@ const blockMathExtension = {
         displayMode: true,
         throwOnError: false,
       });
-      return `<div class="katex-display">${mathHtml}</div>`;
+      return `<div class="katex-display-wrapper"><div class="katex-display">${mathHtml}</div></div>`;
     } catch (e) {
       return token.raw;
     }
@@ -148,10 +155,11 @@ const inlineMathExtension = {
   },
   renderer(token) {
     try {
-      return katex.renderToString(token.text, {
+      const mathHtml = katex.renderToString(token.text, {
         displayMode: false,
         throwOnError: false,
       });
+      return `<span class="katex-inline-wrapper">${mathHtml}</span>`;
     } catch (e) {
       return token.raw;
     }
