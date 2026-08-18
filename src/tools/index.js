@@ -7,9 +7,11 @@
 
 import { toolRegistry } from "./registry.js";
 import { grepTool } from "./implementations/grep.js";
+import { knowledgeSearchTool } from "./implementations/knowledge_search.js";
 
 // Register Custom Function Calling Tools
 toolRegistry.register(grepTool);
+toolRegistry.register(knowledgeSearchTool);
 
 export { toolRegistry };
-export { grepTool };
+export { grepTool, knowledgeSearchTool };

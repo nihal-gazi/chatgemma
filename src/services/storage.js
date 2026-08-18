@@ -8,7 +8,7 @@ export class SynapseStorageService {
   /**
    * Packages full state into standard Synapse format.
    */
-  static packageState(sessions, activeSessionId, settings, userProfile) {
+  static packageState(sessions, activeSessionId, settings, userProfile, knowledgeGraph = null) {
     return {
       version: "1.0.0",
       app: "ChatGemma",
@@ -25,6 +25,7 @@ export class SynapseStorageService {
       },
       activeSessionId: activeSessionId,
       sessions: sessions || [],
+      knowledgeGraph: knowledgeGraph || null,
     };
   }
 
@@ -96,6 +97,7 @@ export class SynapseStorageService {
       user: data.user || null,
       activeSessionId: data.activeSessionId || data.sessions[0]?.id || null,
       sessions: data.sessions,
+      knowledgeGraph: data.knowledgeGraph || null,
       exported_at: data.exported_at || null,
     };
   }

@@ -1143,6 +1143,218 @@
   border-radius: var(--radius-sm);
 }
 
+/* ==========================================================================
+   Knowledge Graph (GraphRAG) Tool Pill Styles
+   ========================================================================== */
+
+.kg-results-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kg-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kg-section-subtitle {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gemini-text-muted);
+}
+
+.kg-entities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+}
+
+.kg-entity-chip {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kg-entity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.kg-entity-name {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: #93c5fd;
+}
+
+.kg-entity-type-badge {
+  background: rgba(147, 197, 253, 0.12);
+  color: #bfdbfe;
+  font-size: 0.68rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.kg-entity-desc {
+  font-size: 0.74rem;
+  color: var(--gemini-text-secondary);
+  line-height: 1.35;
+}
+
+.kg-triples-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.kg-triple-card {
+  background: #111214;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kg-triple-visual {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  flex-wrap: wrap;
+}
+
+.kg-node {
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+}
+
+.kg-node.subject {
+  background: rgba(168, 85, 247, 0.15);
+  color: #d8b4fe;
+}
+
+.kg-node.object {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+}
+
+.kg-edge-arrow {
+  color: #a1a1aa;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.kg-triple-desc {
+  font-size: 0.72rem;
+  color: var(--gemini-text-muted);
+}
+
+.kg-paths-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kg-path-item {
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 2px solid var(--gemini-sparkle-blue);
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: #cbd5e1;
+}
+
+/* Settings Knowledge Graph Card */
+.kg-stats-card {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin: 12px 0;
+}
+
+.kg-stat-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.kg-stat-number {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--gemini-sparkle-blue);
+}
+
+.kg-stat-label {
+  font-size: 0.78rem;
+  color: var(--gemini-text-secondary);
+}
+
+.kg-stat-divider {
+  width: 1px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.kg-distribution-box {
+  margin: 12px 0;
+}
+
+.kg-dist-title {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--gemini-text-secondary);
+  margin-bottom: 6px;
+}
+
+.kg-type-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kg-type-tag {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.74rem;
+  color: var(--gemini-text-secondary);
+}
+
+.kg-action-box {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kg-help-note {
+  font-size: 0.76rem;
+  color: var(--gemini-text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
 .tool-json-output pre {
   margin: 0;
   font-size: 0.76rem;

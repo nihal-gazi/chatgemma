@@ -4,6 +4,7 @@ import {
   Terminal,
   Code,
   FileSearch,
+  Share2,
   Sparkles,
   ChevronDown,
   ChevronRight,
@@ -18,6 +19,7 @@ const TOOL_ICON_MAP = {
   run_code: Terminal,
   code_execution: Terminal,
   grep: FileSearch,
+  knowledge_search: Share2,
   show_thought: Sparkles,
 };
 
@@ -38,6 +40,8 @@ export default function ToolCallPill({ toolCall }) {
     headerSummary = `Python (${lines.length} ${lines.length === 1 ? "line" : "lines"})`;
   } else if (name === "grep") {
     headerSummary = `/${args.pattern || ""}/`;
+  } else if (name === "knowledge_search") {
+    headerSummary = `"${args.query || ""}"${args.depth > 1 ? ` (depth: ${args.depth})` : ""}`;
   } else if (name === "show_thought") {
     headerSummary = "Reasoning exposed";
   } else {
@@ -140,6 +144,7 @@ export default function ToolCallPill({ toolCall }) {
 
 function formatToolName(name) {
   if (!name) return "Tool";
+  if (name === "knowledge_search") return "Knowledge Search";
   return name
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -153,6 +158,73 @@ function renderToolResponse(name, response) {
 
   if (response.error) {
     return <div className="tool-error-output">{response.error}</div>;
+  }
+
+  // Specialized Renderer for Knowledge Graph Search (GraphRAG)
+  if (name === "knowledge_search") {
+    const hasEntities = Array.isArray(response.matchedEntities) && response.matchedEntities.length > 0;
+    const hasFacts = Array.isArray(response.facts) && response.facts.length > 0;
+    const hasPaths = Array.isArray(response.paths) && response.paths.length > 0;
+
+    if (!hasEntities && !hasFacts) {
+      return (
+        <div className="tool-empty-output">
+          No entities or relationships found in Knowledge Graph for <code>{response.query}</code>.
+        </div>
+      );
+    }
+
+    return (
+      <div className="kg-results-container">
+        {hasEntities && (
+          <div className="kg-section">
+            <div className="kg-section-subtitle">Grounded Entities ({response.matchedEntities.length})</div>
+            <div className="kg-entities-grid">
+              {response.matchedEntities.map((ent, idx) => (
+                <div key={idx} className="kg-entity-chip">
+                  <div className="kg-entity-header">
+                    <span className="kg-entity-name">{ent.name}</span>
+                    {ent.types && ent.types.length > 0 && (
+                      <span className="kg-entity-type-badge">{ent.types.join(", ")}</span>
+                    )}
+                  </div>
+                  {ent.description && <div className="kg-entity-desc">{ent.description}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {hasFacts && (
+          <div className="kg-section">
+            <div className="kg-section-subtitle">Semantic Triples &amp; Relations ({response.facts.length})</div>
+            <div className="kg-triples-list">
+              {response.facts.map((fact, idx) => (
+                <div key={idx} className="kg-triple-card">
+                  <div className="kg-triple-visual">
+                    <span className="kg-node subject">{fact.subject}</span>
+                    <span className="kg-edge-arrow">&rarr; {fact.predicate} &rarr;</span>
+                    <span className="kg-node object">{fact.object}</span>
+                  </div>
+                  {fact.description && <div className="kg-triple-desc">{fact.description}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {hasPaths && (
+          <div className="kg-section">
+            <div className="kg-section-subtitle">Multi-Hop Reasoning Paths</div>
+            <div className="kg-paths-list">
+              {response.paths.map((p, idx) => (
+                <div key={idx} className="kg-path-item">{p}</div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   // Specialized Renderer for Web Search & Google Search Grounding
@@ -253,3 +325,4 @@ function renderToolResponse(name, response) {
     </div>
   );
 }
+

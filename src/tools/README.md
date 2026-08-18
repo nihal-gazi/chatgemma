@@ -4,6 +4,13 @@ Welcome to the ChatGemma Tool System. This architecture makes adding, customizin
 
 ---
 
+## Core Custom Tools
+
+1. **`knowledge_search`**: Searches the GraphRAG Knowledge Graph for interconnected entities, directed semantic triples, and multi-hop reasoning paths.
+2. **`grep`**: Regex and pattern search across conversation history.
+
+---
+
 ## Adding a New Tool in 3 Steps
 
 ### Step 1: Create your tool in `src/tools/implementations/my_tool.js`
@@ -12,7 +19,7 @@ Welcome to the ChatGemma Tool System. This architecture makes adding, customizin
 export const myTool = {
   name: "my_tool",                        // Unique name called by Gemini
   displayName: "My Custom Tool",          // Display title for UI pill
-  iconName: "Sparkles",                   // Icon: Globe, Terminal, Code, FileSearch, Sparkles
+  iconName: "Sparkles",                   // Icon: Globe, Terminal, Code, FileSearch, Share2, Sparkles
   description: "Describe what your tool does so the AI knows when to use it.",
   parameters: {
     type: "OBJECT",
@@ -51,9 +58,3 @@ The tool will automatically be:
 - Declared in Google GenAI API function calls schema (`tools: [{ functionDeclarations }]`).
 - Executed when Gemini calls it during a chat session.
 - Rendered in a collapsible Thoughtbox-style pill in the UI showing the query and response.
-
----
-
-## Core Custom Tools
-
-1. **`grep`**: Regex and pattern search across conversation history.

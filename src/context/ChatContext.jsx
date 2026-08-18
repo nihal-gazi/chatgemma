@@ -3,6 +3,7 @@ import { CONFIG } from "../config/config.js";
 import { GemmaApiService } from "../services/api.js";
 import { SynapseStorageService } from "../services/storage.js";
 import { CloudSyncService } from "../services/firestore.js";
+import { knowledgeGraphInstance } from "../services/knowledgeGraph.js";
 import { useAuth } from "./AuthContext.jsx";
 
 const ChatContext = createContext(null);
@@ -12,6 +13,7 @@ export function ChatProvider({ children }) {
 
   // Load Initial State from LocalStorage backup
   const [initialLoaded, setInitialLoaded] = useState(false);
+  const [knowledgeGraphStats, setKnowledgeGraphStats] = useState(() => knowledgeGraphInstance.getStats());
   const [sessions, setSessions] = useState(() => {
     const backup = SynapseStorageService.loadLocalBackup();
     if (backup?.sessions && backup.sessions.length > 0) {
@@ -260,6 +262,7 @@ export function ChatProvider({ children }) {
       const executionContext = {
         activeSession,
         sessions,
+        knowledgeGraph: knowledgeGraphInstance,
       };
 
       await apiServiceRef.current.streamChat(
@@ -307,13 +310,19 @@ export function ChatProvider({ children }) {
               timestamp,
             };
 
+            const updatedHistory = [...messageHistory, assistantMsg];
+
+            // Automatically extract knowledge from completed turn into Knowledge Graph
+            knowledgeGraphInstance.extractFromMessages(updatedHistory, sessionId);
+            setKnowledgeGraphStats(knowledgeGraphInstance.getStats());
+
             setSessions((prev) =>
               prev.map((s) =>
                 s.id === sessionId
                   ? {
                       ...s,
                       updated_at: new Date().toISOString(),
-                      messages: [...messageHistory, assistantMsg],
+                      messages: updatedHistory,
                     }
                   : s
               )
@@ -345,13 +354,25 @@ export function ChatProvider({ children }) {
     }
   };
 
+  const reindexKnowledgeGraph = () => {
+    try {
+      const stats = knowledgeGraphInstance.reindexAllSessions(sessions);
+      setKnowledgeGraphStats(stats);
+      showToast(`Knowledge Graph updated (${stats.totalEntities} entities, ${stats.totalRelations} relations)`, "success");
+      return stats;
+    } catch (err) {
+      showToast(`Indexing failed: ${err.message}`, "error");
+    }
+  };
+
   const exportSynapseFile = async () => {
     try {
       const state = SynapseStorageService.packageState(
         sessions,
         activeSessionId,
         settings,
-        { displayName, email: user?.email }
+        { displayName, email: user?.email },
+        knowledgeGraphInstance.exportGraph()
       );
       const res = await SynapseStorageService.exportToFile(state);
       showToast(res.message, res.success ? "success" : "info");
@@ -369,6 +390,10 @@ export function ChatProvider({ children }) {
       }
       if (imported.settings) {
         setSettings((prev) => ({ ...prev, ...imported.settings }));
+      }
+      if (imported.knowledgeGraph) {
+        knowledgeGraphInstance.importGraph(imported.knowledgeGraph);
+        setKnowledgeGraphStats(knowledgeGraphInstance.getStats());
       }
       showToast("userdat.synapse loaded successfully!", "success");
     } catch (err) {
@@ -396,6 +421,9 @@ export function ChatProvider({ children }) {
         currentStreamingAnswer,
         currentStreamingToolCalls,
         currentStreamingReasoningBlocks,
+        knowledgeGraph: knowledgeGraphInstance,
+        knowledgeGraphStats,
+        reindexKnowledgeGraph,
         stopGeneration,
         exportSynapseFile,
         importSynapseFile,

@@ -173,8 +173,9 @@ export class GemmaApiService {
 Current Date: ${currentDateStr}.
 
 PROTOCOL:
-1. Use available tools (Google Search, Code Execution, Grep) when external information, search grounding, or data computation is needed.
-2. Synthesize all reasoning and tool results into a clear, helpful final response.`;
+1. Use available tools (knowledge_search, Google Search, Code Execution, Grep) when querying learned knowledge, web search grounding, computation, or history is needed.
+2. Use knowledge_search to explore interconnected entities, facts, projects, concepts, and relationships in the Knowledge Graph.
+3. Synthesize all reasoning and tool results into a clear, helpful final response.`;
 
     // Prepare contents
     let currentContents = this._formatContents(messages);

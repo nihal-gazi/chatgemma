@@ -1,13 +1,20 @@
 import React, { useState, useEffect } from "react";
-import { X, User, Database, Key, Cloud, Download, Upload, LogOut, LogIn } from "../Icons/index.jsx";
+import { X, User, Database, Key, Cloud, Download, Upload, LogOut, LogIn, Share2, RotateCcw } from "../Icons/index.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useChat } from "../../context/ChatContext.jsx";
 
 export default function SettingsModal({ isOpen, onClose }) {
   const { user, displayName, customDisplayName, updateDisplayName, loginWithGoogle, logout } =
     useAuth();
-  const { settings, updateSettings, exportSynapseFile, importSynapseFile, showToast } =
-    useChat();
+  const {
+    settings,
+    updateSettings,
+    exportSynapseFile,
+    importSynapseFile,
+    knowledgeGraphStats,
+    reindexKnowledgeGraph,
+    showToast,
+  } = useChat();
 
   const [activeTab, setActiveTab] = useState("profile");
   const [nameInput, setNameInput] = useState("");
@@ -95,6 +102,13 @@ export default function SettingsModal({ isOpen, onClose }) {
             >
               <Database size={16} />
               <span>Data & Cloud</span>
+            </button>
+            <button
+              className={`settings-tab-btn ${activeTab === "kg" ? "active" : ""}`}
+              onClick={() => setActiveTab("kg")}
+            >
+              <Share2 size={16} />
+              <span>Knowledge Graph</span>
             </button>
             <button
               className={`settings-tab-btn ${activeTab === "api" ? "active" : ""}`}
@@ -192,6 +206,50 @@ export default function SettingsModal({ isOpen, onClose }) {
                       />
                     </label>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* KNOWLEDGE GRAPH TAB */}
+            {activeTab === "kg" && (
+              <div className="tab-pane">
+                <h3>GraphRAG Knowledge Graph</h3>
+                <p className="tab-desc">
+                  Interconnected entities, semantic triples, and multi-hop reasoning facts powered by Google Knowledge Graph standards.
+                </p>
+
+                <div className="kg-stats-card">
+                  <div className="kg-stat-item">
+                    <span className="kg-stat-number">{knowledgeGraphStats?.totalEntities || 0}</span>
+                    <span className="kg-stat-label">Entities (Nodes)</span>
+                  </div>
+                  <div className="kg-stat-divider" />
+                  <div className="kg-stat-item">
+                    <span className="kg-stat-number">{knowledgeGraphStats?.totalRelations || 0}</span>
+                    <span className="kg-stat-label">Relations (Triples)</span>
+                  </div>
+                </div>
+
+                {knowledgeGraphStats?.typeDistribution && Object.keys(knowledgeGraphStats.typeDistribution).length > 0 && (
+                  <div className="kg-distribution-box">
+                    <div className="kg-dist-title">Entity Categories:</div>
+                    <div className="kg-type-tags">
+                      {Object.entries(knowledgeGraphStats.typeDistribution).map(([type, count]) => (
+                        <span key={type} className="kg-type-tag">
+                          {type}: <strong>{count}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="kg-action-box">
+                  <button className="btn-modal-action" onClick={reindexKnowledgeGraph}>
+                    <RotateCcw size={15} /> Re-index Graph from All Chats
+                  </button>
+                  <p className="kg-help-note">
+                    The agent automatically invokes the <code>knowledge_search</code> tool to discover connections, relationships, and concepts across your sessions.
+                  </p>
                 </div>
               </div>
             )}
