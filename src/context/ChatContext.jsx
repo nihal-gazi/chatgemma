@@ -16,12 +16,8 @@ export function ChatProvider({ children }) {
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [knowledgeGraphStats, setKnowledgeGraphStats] = useState(() => knowledgeGraphInstance.getStats());
   const [isExtractingKnowledge, setIsExtractingKnowledge] = useState(false);
-
-  // Personalization (user.md) State
   const [userProfileMarkdown, setUserProfileMarkdown] = useState(() => personalizationInstance.getProfile());
-  const [personalizationStats, setPersonalizationStats] = useState(() => personalizationInstance.getProfileStats());
   const [isCompactingProfile, setIsCompactingProfile] = useState(false);
-
   const [sessions, setSessions] = useState(() => {
     const backup = SynapseStorageService.loadLocalBackup();
     if (backup?.sessions && backup.sessions.length > 0) {
@@ -213,22 +209,19 @@ export function ChatProvider({ children }) {
 
     const newMessages = [...targetSession.messages, userMsg];
 
-    // Asynchronous Background Personalization Evaluation from User Prompt
+    // If personalization is enabled, evaluate user prompt asynchronously to update user.md
     if (settings.enablePersonalization !== false) {
       personalizationInstance
         .updateFromPrompt({
-          userMessage: promptText,
+          userMessage: promptText.trim(),
           apiKey: settings.apiKey,
           modelId: settings.modelId,
           maxTokens: settings.personalizationMaxTokens || 5000,
         })
-        .then((stats) => {
-          if (stats) {
-            setUserProfileMarkdown(personalizationInstance.getProfile());
-            setPersonalizationStats(stats);
-          }
+        .then((updatedMd) => {
+          if (updatedMd) setUserProfileMarkdown(updatedMd);
         })
-        .catch((e) => console.warn("[Personalization] Async prompt notice:", e));
+        .catch((e) => console.warn("[Personalization] Async update notice:", e));
     }
 
     setSessions((prev) =>
@@ -292,7 +285,8 @@ export function ChatProvider({ children }) {
         activeSession,
         sessions,
         knowledgeGraph: knowledgeGraphInstance,
-        personalizationProfile: userProfileMarkdown,
+        personalization: personalizationInstance,
+        userProfileMarkdown,
         settings,
       };
 
@@ -343,7 +337,7 @@ export function ChatProvider({ children }) {
 
             const updatedHistory = [...messageHistory, assistantMsg];
 
-            // Asynchronous Background LLM Knowledge Extraction (Gemma 31B + Google Search Grounding)
+            // Asynchronous Background LLM Knowledge Extraction (if Knowledge Graph RW is enabled)
             if (settings.allowKnowledgeGraphReadWrite !== false) {
               knowledgeGraphInstance
                 .extractWithLLM({
@@ -406,7 +400,7 @@ export function ChatProvider({ children }) {
         settings.modelId
       );
       if (stats) setKnowledgeGraphStats(stats);
-      showToast(`Knowledge Graph updated (${stats?.activeEntities || stats?.totalEntities || 0} active nodes)`, "success");
+      showToast(`Knowledge Graph updated (${stats?.totalEntities || 0} entities, ${stats?.totalRelations || 0} relations)`, "success");
       return stats;
     } catch (err) {
       showToast(`Indexing failed: ${err.message}`, "error");
@@ -415,27 +409,25 @@ export function ChatProvider({ children }) {
     }
   };
 
-  const updateUserProfileMarkdown = (newText) => {
-    const stats = personalizationInstance.setProfile(newText);
-    setUserProfileMarkdown(personalizationInstance.getProfile());
-    setPersonalizationStats(stats);
-    showToast("user.md profile saved!", "success");
+  const updateUserProfileMarkdown = (newMd) => {
+    const saved = personalizationInstance.setProfile(newMd);
+    setUserProfileMarkdown(saved);
+    showToast("user.md profile updated!", "success");
+    return saved;
   };
 
-  const compactUserProfile = async (customMaxTokens) => {
+  const compactUserProfile = async () => {
     setIsCompactingProfile(true);
     showToast("Compacting user.md with Gemma...", "info");
     try {
-      const targetTokens = customMaxTokens || settings.personalizationMaxTokens || 5000;
-      const stats = await personalizationInstance.compactProfile({
-        maxTokens: targetTokens,
+      const compacted = await personalizationInstance.compactProfile({
+        maxTokens: settings.personalizationMaxTokens || 5000,
         apiKey: settings.apiKey,
         modelId: settings.modelId,
       });
-      setUserProfileMarkdown(personalizationInstance.getProfile());
-      setPersonalizationStats(stats);
-      showToast(`Compacted user.md to ${stats.tokens} tokens`, "success");
-      return stats;
+      setUserProfileMarkdown(compacted);
+      showToast(`user.md compacted (${personalizationInstance.estimateTokens(compacted)} tokens)`, "success");
+      return compacted;
     } catch (err) {
       showToast(`Compaction error: ${err.message}`, "error");
     } finally {
@@ -443,11 +435,11 @@ export function ChatProvider({ children }) {
     }
   };
 
-  const resetUserProfileMarkdown = () => {
-    const stats = personalizationInstance.resetProfile();
-    setUserProfileMarkdown(personalizationInstance.getProfile());
-    setPersonalizationStats(stats);
-    showToast("user.md reset to default template", "info");
+  const resetUserProfile = () => {
+    const reset = personalizationInstance.resetProfile();
+    setUserProfileMarkdown(reset);
+    showToast("user.md reset to default template.", "info");
+    return reset;
   };
 
   const exportSynapseFile = async () => {
@@ -484,7 +476,6 @@ export function ChatProvider({ children }) {
       if (imported.userProfileMarkdown) {
         personalizationInstance.setProfile(imported.userProfileMarkdown);
         setUserProfileMarkdown(imported.userProfileMarkdown);
-        setPersonalizationStats(personalizationInstance.getProfileStats(settings.personalizationMaxTokens || 5000));
       }
       showToast("userdat.synapse loaded successfully!", "success");
     } catch (err) {
@@ -517,11 +508,10 @@ export function ChatProvider({ children }) {
         isExtractingKnowledge,
         reindexKnowledgeGraph,
         userProfileMarkdown,
-        personalizationStats,
         isCompactingProfile,
         updateUserProfileMarkdown,
         compactUserProfile,
-        resetUserProfileMarkdown,
+        resetUserProfile,
         stopGeneration,
         exportSynapseFile,
         importSynapseFile,

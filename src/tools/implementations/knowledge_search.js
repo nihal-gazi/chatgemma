@@ -45,13 +45,12 @@ export const knowledgeSearchTool = {
   renderSummary: (args) => `KG: "${args.query || ""}"${args.depth > 1 ? ` (depth: ${args.depth})` : ""}`,
 
   async execute(args, context = {}) {
-    // Permission Check
-    const isAllowed = context.settings?.allowKnowledgeGraphReadWrite !== false;
-    if (!isAllowed) {
+    // Check permission from settings
+    if (context?.settings?.allowKnowledgeGraphReadWrite === false) {
       return {
-        error:
-          "Permission denied: LLM Knowledge Graph read/write access is disabled in Settings. Please enable it in Settings to allow searching the graph.",
-        status: "permission_denied",
+        query: args.query || "",
+        found: false,
+        error: "Permission denied: LLM Knowledge Graph read/write access is disabled in Settings. Please ask the user to enable it in Settings to allow the model to interact with the graph.",
       };
     }
 

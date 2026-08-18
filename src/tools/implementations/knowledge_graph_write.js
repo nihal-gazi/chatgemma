@@ -1,162 +1,152 @@
 /**
- * Custom Tool: knowledge_graph_write
- * Allows Gemma to explicitly add, update, and interconnect entity nodes and directed semantic triples.
+ * Knowledge Graph Write Tool for ChatGemma
+ * Enables Gemma to autonomously create, update, or reinforce entity nodes
+ * and semantic relationships in the Knowledge Graph.
  */
 
+import { knowledgeGraphInstance } from "../../services/knowledgeGraph.js";
+
 export const knowledgeGraphWriteTool = {
-  declaration: {
-    name: "knowledge_graph_write",
-    description:
-      "Explicitly writes, adds, or updates entity nodes and directed semantic relationships (triples) in the GraphRAG Knowledge Graph. Use this tool whenever you learn new verified facts, user preferences, projects, or connections.",
-    parameters: {
-      type: "OBJECT",
-      properties: {
-        entities: {
-          type: "ARRAY",
-          description: "List of entities to create or update in the Knowledge Graph.",
-          items: {
-            type: "OBJECT",
-            properties: {
-              name: {
-                type: "STRING",
-                description: "Canonical name of the entity (e.g. 'Nihal Gazi', 'ChatGemma', 'Rust', 'Tokyo').",
-              },
-              types: {
-                type: "ARRAY",
-                items: { type: "STRING" },
-                description:
-                  "Schema.org entity types: Person, Organization, Project, Technology, Concept, Location, Preference, Tool.",
-              },
-              description: {
-                type: "STRING",
-                description: "Accurate factual summary describing this entity.",
-              },
-              aliases: {
-                type: "ARRAY",
-                items: { type: "STRING" },
-                description: "Alternative names, nicknames, or acronyms.",
-              },
-              attributes: {
-                type: "OBJECT",
-                description: "Key-value attributes (e.g. { role: 'Software Engineer', location: 'Tokyo' }).",
-              },
+  name: "knowledge_graph_write",
+  displayName: "Knowledge Graph Write",
+  iconName: "Share2",
+  description:
+    "Writes, updates, or reinforces factual entities and directed semantic relationships (triples) into the persistent Knowledge Graph.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      entities: {
+        type: "ARRAY",
+        description: "List of entities to create or update in the Knowledge Graph.",
+        items: {
+          type: "OBJECT",
+          properties: {
+            name: {
+              type: "STRING",
+              description: "Canonical name of the entity.",
             },
-            required: ["name"],
+            types: {
+              type: "ARRAY",
+              items: { type: "STRING" },
+              description: "Schema.org entity types (e.g., ['Person', 'Organization', 'Project', 'Technology', 'Concept', 'Location', 'Preference']).",
+            },
+            description: {
+              type: "STRING",
+              description: "Concise factual summary of the entity.",
+            },
+            aliases: {
+              type: "ARRAY",
+              items: { type: "STRING" },
+              description: "Alternative names, abbreviations, or acronyms.",
+            },
           },
+          required: ["name"],
         },
-        relationships: {
-          type: "ARRAY",
-          description: "List of directed semantic triples (Subject --[PREDICATE]--> Object) to link entities.",
-          items: {
-            type: "OBJECT",
-            properties: {
-              source: {
-                type: "STRING",
-                description: "Name or ID of the source entity (Subject).",
-              },
-              predicate: {
-                type: "STRING",
-                description:
-                  "Typed semantic relationship: CREATED, WORKS_ON, USES, PREFERS, LOCATED_IN, PART_OF, ASSOCIATED_WITH, RESEARCHES, EXPERT_IN, IMPLEMENTS.",
-              },
-              target: {
-                type: "STRING",
-                description: "Name or ID of the target entity (Object).",
-              },
-              description: {
-                type: "STRING",
-                description: "Clear sentence explaining the factual nature of this relationship.",
-              },
-              confidence: {
-                type: "NUMBER",
-                description: "Confidence rating between 0.0 and 1.0 (default: 0.95).",
-              },
+      },
+      relationships: {
+        type: "ARRAY",
+        description: "List of directed semantic triples to create or update.",
+        items: {
+          type: "OBJECT",
+          properties: {
+            source: {
+              type: "STRING",
+              description: "Source entity name.",
             },
-            required: ["source", "predicate", "target"],
+            predicate: {
+              type: "STRING",
+              description: "Predicate relation (e.g. CREATED, WORKS_ON, USES, PREFERS, LOCATED_IN, PART_OF, ASSOCIATED_WITH, RESEARCHES, IMPLEMENTS).",
+            },
+            target: {
+              type: "STRING",
+              description: "Target entity name.",
+            },
+            description: {
+              type: "STRING",
+              description: "Clear sentence explaining the connection between source and target.",
+            },
+            confidence: {
+              type: "NUMBER",
+              description: "Confidence rating between 0.1 and 1.0 (default: 0.95).",
+            },
           },
+          required: ["source", "predicate", "target"],
         },
       },
     },
   },
+  renderSummary: (args) => {
+    const eCount = args.entities?.length || 0;
+    const rCount = args.relationships?.length || 0;
+    return `KG Write: +${eCount} ${eCount === 1 ? "entity" : "entities"}, +${rCount} ${rCount === 1 ? "relation" : "relations"}`;
+  },
 
   async execute(args, context = {}) {
-    const startTime = Date.now();
-    const { entities = [], relationships = [] } = args || {};
-
-    // 1. Permission Check
-    const isAllowed = context.settings?.allowKnowledgeGraphReadWrite !== false;
-    if (!isAllowed) {
+    // Check permission from settings
+    if (context?.settings?.allowKnowledgeGraphReadWrite === false) {
       return {
-        error:
-          "Permission denied: LLM Knowledge Graph read/write access is disabled in Settings. Please enable it in Settings to allow modifying the graph.",
-        status: "permission_denied",
-        executionTimeMs: Date.now() - startTime,
+        success: false,
+        error: "Permission denied: LLM Knowledge Graph read/write access is disabled in Settings. Please ask the user to enable it in Settings to allow the model to modify the graph.",
       };
     }
 
-    const kg = context.knowledgeGraph;
-    if (!kg) {
-      return {
-        error: "Knowledge Graph service unavailable in execution context.",
-        status: "unavailable",
-        executionTimeMs: Date.now() - startTime,
-      };
-    }
+    const kgService = context.knowledgeGraph || knowledgeGraphInstance;
+    const sessionId = context.activeSession?.id || "";
 
-    const writtenEntities = [];
-    const writtenRelations = [];
-
-    // 2. Write Entities
-    if (Array.isArray(entities)) {
-      for (const ent of entities) {
+    const entitiesWritten = [];
+    if (Array.isArray(args.entities)) {
+      for (const ent of args.entities) {
         if (ent && ent.name) {
-          const written = kg.writeEntity({
+          const written = kgService.writeEntity({
             name: ent.name,
             types: ent.types || ["Concept"],
             description: ent.description || "",
             aliases: ent.aliases || [],
             attributes: ent.attributes || {},
-            sourceSession: context.activeSession?.id || "",
+            sourceSession: sessionId,
           });
-          if (written) writtenEntities.push(written);
+          if (written) {
+            entitiesWritten.push({
+              id: written.id,
+              name: written.name,
+              types: written.types,
+              description: written.description,
+            });
+          }
         }
       }
     }
 
-    // 3. Write Relationships
-    if (Array.isArray(relationships)) {
-      for (const rel of relationships) {
+    const relationsWritten = [];
+    if (Array.isArray(args.relationships)) {
+      for (const rel of args.relationships) {
         if (rel && rel.source && rel.predicate && rel.target) {
-          const written = kg.writeRelation({
+          const written = kgService.writeRelation({
             source: rel.source,
             predicate: rel.predicate,
             target: rel.target,
             description: rel.description || "",
             confidence: rel.confidence || 0.95,
-            sourceSession: context.activeSession?.id || "",
+            sourceSession: sessionId,
           });
-          if (written) writtenRelations.push(written);
+          if (written) {
+            relationsWritten.push({
+              source: written.sourceName,
+              predicate: written.predicate,
+              target: written.targetName,
+              description: written.description,
+            });
+          }
         }
       }
     }
 
     return {
       success: true,
-      writtenEntitiesCount: writtenEntities.length,
-      writtenRelationsCount: writtenRelations.length,
-      writtenEntities: writtenEntities.map((e) => ({
-        name: e.name,
-        types: e.types,
-        description: e.description,
-      })),
-      writtenRelations: writtenRelations.map((r) => ({
-        source: r.sourceName,
-        predicate: r.predicate,
-        target: r.targetName,
-        description: r.description,
-      })),
-      stats: kg.getStats(),
-      executionTimeMs: Date.now() - startTime,
+      message: `Successfully wrote ${entitiesWritten.length} entities and ${relationsWritten.length} relations to the Knowledge Graph.`,
+      entitiesWritten,
+      relationsWritten,
+      currentStats: kgService.getStats(),
     };
   },
 };

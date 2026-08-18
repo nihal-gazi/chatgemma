@@ -19,3 +19,4 @@ toolRegistry.register(knowledgeGraphDeleteTool);
 
 export { toolRegistry };
 export { grepTool, knowledgeSearchTool, knowledgeGraphWriteTool, knowledgeGraphDeleteTool };
+

@@ -46,13 +46,13 @@ export default function ToolCallPill({ toolCall }) {
   } else if (name === "knowledge_search") {
     headerSummary = `"${args.query || ""}"${args.depth > 1 ? ` (depth: ${args.depth})` : ""}`;
   } else if (name === "knowledge_graph_write") {
-    const entCount = (args.entities || []).length;
-    const relCount = (args.relationships || []).length;
-    headerSummary = `Write (${entCount} entities, ${relCount} relations)`;
+    const eCount = args.entities?.length || 0;
+    const rCount = args.relationships?.length || 0;
+    headerSummary = `+${eCount} ent, +${rCount} rel`;
   } else if (name === "knowledge_graph_delete") {
-    const entCount = (args.entityNames || []).length;
-    const relCount = (args.relationships || []).length;
-    headerSummary = `Soft-delete (${entCount} entities, ${relCount} relations)`;
+    const eCount = args.entityNames?.length || 0;
+    const rCount = args.relationships?.length || 0;
+    headerSummary = `-${eCount} ent, -${rCount} rel`;
   } else if (name === "show_thought") {
     headerSummary = "Reasoning exposed";
   } else {
@@ -175,23 +175,24 @@ function renderToolResponse(name, response) {
 
   // Specialized Renderer for Knowledge Graph Write
   if (name === "knowledge_graph_write") {
-    const hasEntities = Array.isArray(response.writtenEntities) && response.writtenEntities.length > 0;
-    const hasRelations = Array.isArray(response.writtenRelations) && response.writtenRelations.length > 0;
+    const hasEntities = Array.isArray(response.entitiesWritten) && response.entitiesWritten.length > 0;
+    const hasRelations = Array.isArray(response.relationsWritten) && response.relationsWritten.length > 0;
 
     return (
       <div className="kg-results-container">
-        <div className="tool-status-message success">
-          Successfully written {response.writtenEntitiesCount || 0} entities and {response.writtenRelationsCount || 0} relationships.
-        </div>
+        <div className="kg-success-banner">{response.message || "Knowledge written successfully."}</div>
+
         {hasEntities && (
           <div className="kg-section">
-            <div className="kg-section-subtitle">Entities Added/Updated:</div>
+            <div className="kg-section-subtitle">Entities Created / Updated ({response.entitiesWritten.length}):</div>
             <div className="kg-entities-grid">
-              {response.writtenEntities.map((ent, idx) => (
-                <div key={idx} className="kg-entity-chip">
+              {response.entitiesWritten.map((ent, idx) => (
+                <div key={idx} className="kg-entity-chip write">
                   <div className="kg-entity-header">
                     <span className="kg-entity-name">{ent.name}</span>
-                    {ent.types && <span className="kg-entity-type-badge">{ent.types.join(", ")}</span>}
+                    {ent.types && ent.types.length > 0 && (
+                      <span className="kg-entity-type-badge">{ent.types.join(", ")}</span>
+                    )}
                   </div>
                   {ent.description && <div className="kg-entity-desc">{ent.description}</div>}
                 </div>
@@ -199,12 +200,13 @@ function renderToolResponse(name, response) {
             </div>
           </div>
         )}
+
         {hasRelations && (
           <div className="kg-section">
-            <div className="kg-section-subtitle">Relationships Created:</div>
+            <div className="kg-section-subtitle">Relations Created / Updated ({response.relationsWritten.length}):</div>
             <div className="kg-triples-list">
-              {response.writtenRelations.map((rel, idx) => (
-                <div key={idx} className="kg-triple-card">
+              {response.relationsWritten.map((rel, idx) => (
+                <div key={idx} className="kg-triple-card write">
                   <div className="kg-triple-visual">
                     <span className="kg-node subject">{rel.source}</span>
                     <span className="kg-edge-arrow">&rarr; {rel.predicate} &rarr;</span>
@@ -222,33 +224,38 @@ function renderToolResponse(name, response) {
 
   // Specialized Renderer for Knowledge Graph Delete (Soft Delete)
   if (name === "knowledge_graph_delete") {
-    const hasEntities = Array.isArray(response.entityResults) && response.entityResults.length > 0;
-    const hasRelations = Array.isArray(response.relationResults) && response.relationResults.length > 0;
+    const hasEntities = Array.isArray(response.entitiesSoftDeleted) && response.entitiesSoftDeleted.length > 0;
+    const hasRelations = Array.isArray(response.relationsSoftDeleted) && response.relationsSoftDeleted.length > 0;
 
     return (
       <div className="kg-results-container">
-        <div className="tool-status-message warning">
-          Soft-deleted {response.softDeletedEntitiesCount || 0} entities and {response.softDeletedRelationsCount || 0} relationships (isActive set to false).
-        </div>
+        <div className="kg-delete-banner">{response.message || "Items soft-deleted (isActive = false)."}</div>
+
         {hasEntities && (
           <div className="kg-section">
-            <div className="kg-section-subtitle">Soft-Deleted Entities:</div>
-            <div className="kg-triples-list">
-              {response.entityResults.map((ent, idx) => (
-                <div key={idx} className="kg-triple-card">
-                  <div className="kg-triple-desc">{ent.message || `Entity ${ent.entityName} soft-deleted`}</div>
-                </div>
+            <div className="kg-section-subtitle">Entities Soft-Deleted ({response.entitiesSoftDeleted.length}):</div>
+            <div className="kg-type-tags">
+              {response.entitiesSoftDeleted.map((ent, idx) => (
+                <span key={idx} className="kg-type-tag inactive">
+                  {ent.name || ent.id} (isActive: false)
+                </span>
               ))}
             </div>
           </div>
         )}
+
         {hasRelations && (
           <div className="kg-section">
-            <div className="kg-section-subtitle">Soft-Deleted Relations:</div>
+            <div className="kg-section-subtitle">Relations Soft-Deleted ({response.relationsSoftDeleted.length}):</div>
             <div className="kg-triples-list">
-              {response.relationResults.map((rel, idx) => (
-                <div key={idx} className="kg-triple-card">
-                  <div className="kg-triple-desc">{rel.message || "Relation soft-deleted"}</div>
+              {response.relationsSoftDeleted.map((rel, idx) => (
+                <div key={idx} className="kg-triple-card inactive">
+                  <div className="kg-triple-visual">
+                    <span className="kg-node subject">{rel.source}</span>
+                    <span className="kg-edge-arrow">&rarr; {rel.predicate} &rarr;</span>
+                    <span className="kg-node object">{rel.target}</span>
+                    <span className="kg-inactive-badge">(deactivated)</span>
+                  </div>
                 </div>
               ))}
             </div>

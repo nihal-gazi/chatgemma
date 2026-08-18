@@ -1,5 +1,19 @@
 import React, { useState, useEffect } from "react";
-import { X, User, Database, Key, Cloud, Download, Upload, LogOut, LogIn, Share2, RotateCcw, Sparkles } from "../Icons/index.jsx";
+import {
+  X,
+  User,
+  Database,
+  Key,
+  Cloud,
+  Download,
+  Upload,
+  LogOut,
+  LogIn,
+  Share2,
+  RotateCcw,
+  FileText,
+  Sparkles,
+} from "../Icons/index.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useChat } from "../../context/ChatContext.jsx";
 
@@ -15,11 +29,10 @@ export default function SettingsModal({ isOpen, onClose }) {
     isExtractingKnowledge,
     reindexKnowledgeGraph,
     userProfileMarkdown,
-    personalizationStats,
     isCompactingProfile,
     updateUserProfileMarkdown,
     compactUserProfile,
-    resetUserProfileMarkdown,
+    resetUserProfile,
     showToast,
   } = useChat();
 
@@ -27,10 +40,10 @@ export default function SettingsModal({ isOpen, onClose }) {
   const [nameInput, setNameInput] = useState("");
   const [apiKeyInput, setApiKeyInput] = useState(settings.apiKey || "");
   const [cloudSync, setCloudSync] = useState(Boolean(settings.cloudSyncEnabled));
-  const [allowKgRw, setAllowKgRw] = useState(settings.allowKnowledgeGraphReadWrite !== false);
+  const [allowKgReadWrite, setAllowKgReadWrite] = useState(settings.allowKnowledgeGraphReadWrite !== false);
   const [enablePersonalization, setEnablePersonalization] = useState(settings.enablePersonalization !== false);
   const [maxTokensInput, setMaxTokensInput] = useState(settings.personalizationMaxTokens || 5000);
-  const [profileTextInput, setProfileTextInput] = useState(userProfileMarkdown || "");
+  const [userMdText, setUserMdText] = useState(userProfileMarkdown || "");
   const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
@@ -39,10 +52,10 @@ export default function SettingsModal({ isOpen, onClose }) {
       setNameInput(customDisplayName || user?.displayName || "");
       setApiKeyInput(settings.apiKey || "");
       setCloudSync(Boolean(settings.cloudSyncEnabled));
-      setAllowKgRw(settings.allowKnowledgeGraphReadWrite !== false);
+      setAllowKgReadWrite(settings.allowKnowledgeGraphReadWrite !== false);
       setEnablePersonalization(settings.enablePersonalization !== false);
       setMaxTokensInput(settings.personalizationMaxTokens || 5000);
-      setProfileTextInput(userProfileMarkdown || "");
+      setUserMdText(userProfileMarkdown || "");
     }
   }, [isOpen, customDisplayName, user?.displayName, settings, userProfileMarkdown]);
 
@@ -80,8 +93,8 @@ export default function SettingsModal({ isOpen, onClose }) {
     }
   };
 
-  const handleToggleKgRw = (checked) => {
-    setAllowKgRw(checked);
+  const handleToggleKgReadWrite = (checked) => {
+    setAllowKgReadWrite(checked);
     updateSettings({ allowKnowledgeGraphReadWrite: checked });
     showToast(checked ? "LLM Knowledge Graph Read/Write enabled" : "LLM Knowledge Graph Read/Write disabled", "info");
   };
@@ -89,16 +102,22 @@ export default function SettingsModal({ isOpen, onClose }) {
   const handleTogglePersonalization = (checked) => {
     setEnablePersonalization(checked);
     updateSettings({ enablePersonalization: checked });
-    showToast(checked ? "Personalization (user.md) enabled" : "Personalization disabled", "info");
+    showToast(checked ? "Personalization enabled" : "Personalization disabled", "info");
   };
 
-  const handleSavePersonalizationSettings = () => {
-    const parsedTokens = Math.max(500, Math.min(parseInt(maxTokensInput, 10) || 5000, 32000));
-    updateSettings({
-      enablePersonalization,
-      personalizationMaxTokens: parsedTokens,
-    });
-    updateUserProfileMarkdown(profileTextInput);
+  const handleSaveMaxTokens = (val) => {
+    const num = Math.max(500, Math.min(Number(val) || 5000, 50000));
+    setMaxTokensInput(num);
+    updateSettings({ personalizationMaxTokens: num });
+  };
+
+  const handleSaveUserMd = () => {
+    updateUserProfileMarkdown(userMdText);
+  };
+
+  const handleResetUserMd = () => {
+    const reset = resetUserProfile();
+    setUserMdText(reset);
   };
 
   const handleFileInput = (e) => {
@@ -108,6 +127,8 @@ export default function SettingsModal({ isOpen, onClose }) {
       handleClose();
     }
   };
+
+  const estimatedUserMdTokens = Math.ceil((userMdText || "").trim().length / 3.8);
 
   return (
     <div className={`modal-backdrop ${isClosing ? "closing" : ""}`} onClick={handleClose}>
@@ -136,15 +157,8 @@ export default function SettingsModal({ isOpen, onClose }) {
               className={`settings-tab-btn ${activeTab === "personalization" ? "active" : ""}`}
               onClick={() => setActiveTab("personalization")}
             >
-              <Sparkles size={16} />
+              <FileText size={16} />
               <span>Personalization</span>
-            </button>
-            <button
-              className={`settings-tab-btn ${activeTab === "data" ? "active" : ""}`}
-              onClick={() => setActiveTab("data")}
-            >
-              <Database size={16} />
-              <span>Data & Cloud</span>
             </button>
             <button
               className={`settings-tab-btn ${activeTab === "kg" ? "active" : ""}`}
@@ -152,6 +166,13 @@ export default function SettingsModal({ isOpen, onClose }) {
             >
               <Share2 size={16} />
               <span>Knowledge Graph</span>
+            </button>
+            <button
+              className={`settings-tab-btn ${activeTab === "data" ? "active" : ""}`}
+              onClick={() => setActiveTab("data")}
+            >
+              <Database size={16} />
+              <span>Data & Cloud</span>
             </button>
             <button
               className={`settings-tab-btn ${activeTab === "api" ? "active" : ""}`}
@@ -204,20 +225,24 @@ export default function SettingsModal({ isOpen, onClose }) {
               </div>
             )}
 
-            {/* PERSONALIZATION TAB */}
+            {/* PERSONALIZATION (user.md) TAB */}
             {activeTab === "personalization" && (
               <div className="tab-pane">
-                <h3>LLM Personalization (`user.md`)</h3>
-                <p className="tab-desc">
-                  Gemma learns your identity, preferences, and workflows to personalize every conversation.
-                </p>
+                <div className="tab-header-row">
+                  <div>
+                    <h3>Personalization (`user.md`)</h3>
+                    <p className="tab-desc">
+                      Continuous user persona, preferences, and context profile injected into every model prompt.
+                    </p>
+                  </div>
+                </div>
 
                 <div className="cloud-sync-toggle-card">
                   <div className="toggle-left">
                     <Sparkles size={20} className="cloud-icon" />
                     <div>
-                      <div className="toggle-title">Enable Personalization</div>
-                      <div className="toggle-sub">Attach your <code>user.md</code> profile to every prompt and continuously update it.</div>
+                      <div className="toggle-title">Enable LLM Personalization</div>
+                      <div className="toggle-sub">Automatically learns about you from your prompts and grounds responses in your profile.</div>
                     </div>
                   </div>
                   <label className="switch">
@@ -230,54 +255,133 @@ export default function SettingsModal({ isOpen, onClose }) {
                   </label>
                 </div>
 
-                <div className="form-field" style={{ marginTop: "14px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                    <label>Max Token Limit for user.md</label>
-                    <span className="token-counter-badge">
-                      {personalizationStats?.tokens || 0} / {maxTokensInput} tokens
-                    </span>
+                <div className="form-field" style={{ marginTop: "12px" }}>
+                  <div className="label-with-badge">
+                    <label>Max Token Threshold (Compaction Limit)</label>
+                    <span className="token-badge">{maxTokensInput} tokens</span>
                   </div>
                   <input
                     type="number"
+                    min="500"
+                    max="50000"
+                    step="500"
                     className="modal-text-input"
                     value={maxTokensInput}
-                    min={500}
-                    max={32000}
-                    step={500}
-                    onChange={(e) => setMaxTokensInput(e.target.value)}
-                    placeholder="Default: 5000"
+                    onChange={(e) => handleSaveMaxTokens(e.target.value)}
                   />
-                  <p className="kg-help-note" style={{ marginTop: "4px" }}>
-                    If <code>user.md</code> exceeds this limit, Gemma automatically runs recursive compaction in the background to distill the notes.
-                  </p>
+                  <p className="field-hint">When <code>user.md</code> exceeds this limit, recursive compaction distillates the profile.</p>
                 </div>
 
                 <div className="form-field" style={{ marginTop: "14px" }}>
-                  <label>Internal Profile (user.md)</label>
+                  <div className="label-with-badge">
+                    <label>Internal Profile (`user.md`)</label>
+                    <span className={`token-badge ${estimatedUserMdTokens > maxTokensInput ? "warning" : ""}`}>
+                      ~{estimatedUserMdTokens} / {maxTokensInput} tokens
+                    </span>
+                  </div>
                   <textarea
-                    className="modal-textarea-input"
+                    className="modal-textarea-input font-mono"
                     rows={9}
-                    value={profileTextInput}
-                    onChange={(e) => setProfileTextInput(e.target.value)}
-                    placeholder="# User Profile..."
+                    value={userMdText}
+                    onChange={(e) => setUserMdText(e.target.value)}
+                    placeholder="# User Profile (user.md)"
                   />
                 </div>
 
-                <div className="btn-row" style={{ marginTop: "12px" }}>
-                  <button className="btn-modal-action" onClick={handleSavePersonalizationSettings}>
+                <div className="personalization-actions-row">
+                  <button className="btn-modal-action" onClick={handleSaveUserMd}>
                     Save user.md
                   </button>
                   <button
                     className="btn-modal-outline"
-                    onClick={() => compactUserProfile(parseInt(maxTokensInput, 10) || 5000)}
+                    onClick={compactUserProfile}
                     disabled={isCompactingProfile}
                   >
-                    <RotateCcw size={15} className={isCompactingProfile ? "spin" : ""} />
-                    {isCompactingProfile ? "Compacting..." : "Compact Now"}
+                    <RotateCcw size={14} className={isCompactingProfile ? "spin" : ""} />
+                    {isCompactingProfile ? "Compacting Profile..." : "Compact Now"}
                   </button>
-                  <button className="btn-modal-danger" onClick={resetUserProfileMarkdown}>
+                  <button className="btn-modal-danger-outline" onClick={handleResetUserMd}>
                     Reset
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* KNOWLEDGE GRAPH TAB */}
+            {activeTab === "kg" && (
+              <div className="tab-pane">
+                <h3>GraphRAG Knowledge Graph</h3>
+                <p className="tab-desc">
+                  Powered by <strong>Gemma 31B</strong> with <strong>Google Search Grounding</strong> for automated factual entity-relation extraction.
+                </p>
+
+                {/* RW Permissions Toggle Card */}
+                <div className="cloud-sync-toggle-card" style={{ marginBottom: "14px" }}>
+                  <div className="toggle-left">
+                    <Share2 size={20} className="cloud-icon" />
+                    <div>
+                      <div className="toggle-title">Allow LLM to Read / Write Knowledge Graph</div>
+                      <div className="toggle-sub">Enables Gemma tools (<code>knowledge_search</code>, <code>knowledge_graph_write</code>, <code>knowledge_graph_delete</code>).</div>
+                    </div>
+                  </div>
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={allowKgReadWrite}
+                      onChange={(e) => handleToggleKgReadWrite(e.target.checked)}
+                    />
+                    <span className="slider round"></span>
+                  </label>
+                </div>
+
+                <div className="kg-stats-card">
+                  <div className="kg-stat-item">
+                    <span className="kg-stat-number">{knowledgeGraphStats?.totalEntities || 0}</span>
+                    <span className="kg-stat-label">Active Entities</span>
+                  </div>
+                  <div className="kg-stat-divider" />
+                  <div className="kg-stat-item">
+                    <span className="kg-stat-number">{knowledgeGraphStats?.totalRelations || 0}</span>
+                    <span className="kg-stat-label">Active Relations</span>
+                  </div>
+                  {Boolean(knowledgeGraphStats?.inactiveEntities) && (
+                    <>
+                      <div className="kg-stat-divider" />
+                      <div className="kg-stat-item">
+                        <span className="kg-stat-number muted">{knowledgeGraphStats.inactiveEntities}</span>
+                        <span className="kg-stat-label">Soft-Deleted</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {knowledgeGraphStats?.typeDistribution && Object.keys(knowledgeGraphStats.typeDistribution).length > 0 && (
+                  <div className="kg-distribution-box">
+                    <div className="kg-dist-title">Entity Categories:</div>
+                    <div className="kg-type-tags">
+                      {Object.entries(knowledgeGraphStats.typeDistribution).map(([type, count]) => (
+                        <span key={type} className="kg-type-tag">
+                          {type}: <strong>{count}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="kg-action-box">
+                  <button
+                    className="btn-modal-action"
+                    onClick={reindexKnowledgeGraph}
+                    disabled={isExtractingKnowledge || !allowKgReadWrite}
+                  >
+                    <RotateCcw size={15} className={isExtractingKnowledge ? "spin" : ""} />
+                    {isExtractingKnowledge ? "Extracting with Gemma 31B & Google Search..." : "Re-index Graph with Gemma 31B"}
+                  </button>
+                  <p className="kg-help-note">
+                    {allowKgReadWrite
+                      ? "Gemma autonomously calls knowledge_graph_write and knowledge_graph_delete (soft-delete with isActive: false) to maintain the graph."
+                      : "Knowledge Graph tools are disabled in settings. Enable the switch above to allow model read/write access."}
+                  </p>
                 </div>
               </div>
             )}
@@ -327,77 +431,6 @@ export default function SettingsModal({ isOpen, onClose }) {
                       />
                     </label>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* KNOWLEDGE GRAPH TAB */}
-            {activeTab === "kg" && (
-              <div className="tab-pane">
-                <h3>GraphRAG Knowledge Graph</h3>
-                <p className="tab-desc">
-                  Powered by <strong>Gemma 31B</strong> with <strong>Google Search Grounding</strong> for automated factual entity-relation extraction.
-                </p>
-
-                <div className="cloud-sync-toggle-card" style={{ marginBottom: "14px" }}>
-                  <div className="toggle-left">
-                    <Share2 size={20} className="cloud-icon" />
-                    <div>
-                      <div className="toggle-title">Allow LLM to Read / Write Knowledge Graph</div>
-                      <div className="toggle-sub">When disabled, tools return permission denied when the model attempts to read, write, or delete graph nodes.</div>
-                    </div>
-                  </div>
-                  <label className="switch">
-                    <input
-                      type="checkbox"
-                      checked={allowKgRw}
-                      onChange={(e) => handleToggleKgRw(e.target.checked)}
-                    />
-                    <span className="slider round"></span>
-                  </label>
-                </div>
-
-                <div className="kg-stats-card">
-                  <div className="kg-stat-item">
-                    <span className="kg-stat-number">
-                      {knowledgeGraphStats?.activeEntities !== undefined ? knowledgeGraphStats.activeEntities : knowledgeGraphStats?.totalEntities || 0}
-                    </span>
-                    <span className="kg-stat-label">Active Entities ({knowledgeGraphStats?.totalEntities || 0} Total)</span>
-                  </div>
-                  <div className="kg-stat-divider" />
-                  <div className="kg-stat-item">
-                    <span className="kg-stat-number">
-                      {knowledgeGraphStats?.activeRelations !== undefined ? knowledgeGraphStats.activeRelations : knowledgeGraphStats?.totalRelations || 0}
-                    </span>
-                    <span className="kg-stat-label">Active Triples ({knowledgeGraphStats?.totalRelations || 0} Total)</span>
-                  </div>
-                </div>
-
-                {knowledgeGraphStats?.typeDistribution && Object.keys(knowledgeGraphStats.typeDistribution).length > 0 && (
-                  <div className="kg-distribution-box">
-                    <div className="kg-dist-title">Entity Categories:</div>
-                    <div className="kg-type-tags">
-                      {Object.entries(knowledgeGraphStats.typeDistribution).map(([type, count]) => (
-                        <span key={type} className="kg-type-tag">
-                          {type}: <strong>{count}</strong>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="kg-action-box">
-                  <button
-                    className="btn-modal-action"
-                    onClick={reindexKnowledgeGraph}
-                    disabled={isExtractingKnowledge}
-                  >
-                    <RotateCcw size={15} className={isExtractingKnowledge ? "spin" : ""} />
-                    {isExtractingKnowledge ? "Extracting with Gemma 31B & Google Search..." : "Re-index Graph with Gemma 31B"}
-                  </button>
-                  <p className="kg-help-note">
-                    The agent automatically invokes the <code>knowledge_search</code>, <code>knowledge_graph_write</code>, and <code>knowledge_graph_delete</code> tools to manage connections, relationships, and concepts across your sessions.
-                  </p>
                 </div>
               </div>
             )}

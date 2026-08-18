@@ -159,7 +159,7 @@ export class GemmaApiService {
         ? { includeServerSideToolInvocations: true }
         : undefined;
 
-    // 2. Dynamic Temporal Anchor & Personalization Context
+    // 2. Dynamic Temporal Anchor
     const currentDateStr = new Date().toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -167,25 +167,30 @@ export class GemmaApiService {
       day: "numeric",
     });
 
+    // 3. User Personalization Profile (user.md)
+    let personalizationContext = "";
     const isPersonalizationEnabled = executionContext.settings?.enablePersonalization !== false;
-    const userProfileMarkdown = executionContext.personalizationProfile || "";
+    const userProfileMd =
+      executionContext.personalization?.getProfile?.() ||
+      executionContext.userProfileMarkdown ||
+      "";
 
-    const personalizationSection =
-      isPersonalizationEnabled && userProfileMarkdown.trim()
-        ? `\n\n[USER PERSONALIZATION PROFILE (user.md)]\n${userProfileMarkdown.trim()}\n---`
-        : "";
+    if (isPersonalizationEnabled && userProfileMd.trim().length > 0) {
+      personalizationContext = `\n\n[USER PERSONALIZATION PROFILE (user.md)]\n${userProfileMd.trim()}\n`;
+    }
 
     const basePrompt = (this.systemPrompt || CONFIG.defaultSystemPrompt || "").trim();
-    const fullSystemInstruction = `${basePrompt}
+    const fullSystemInstruction = `${basePrompt}${personalizationContext}
 
-Current Date: ${currentDateStr}.${personalizationSection}
+Current Date: ${currentDateStr}.
 
 PROTOCOL:
-1. Use available tools (knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) when querying learned knowledge, updating the Knowledge Graph, web search grounding, computation, or history is needed.
+1. Use available tools (knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) when querying learned knowledge, saving facts, soft-deleting outdated items, web search grounding, computation, or history is needed.
 2. Use knowledge_search to explore interconnected entities, facts, projects, concepts, and relationships in the Knowledge Graph.
-3. Use knowledge_graph_write to record new persistent facts, projects, preferences, or entity relationships learned during the conversation.
-4. Use knowledge_graph_delete to soft-delete outdated or incorrect entities/relations (which marks isActive = false).
-5. Synthesize all reasoning and tool results into a clear, helpful final response.`;
+3. Use knowledge_graph_write to record new entities or semantic triples into the graph when new knowledge, user projects, or facts are established.
+4. Use knowledge_graph_delete to soft-delete outdated or invalid entities/relationships (marks isActive = false).
+5. Respect user preferences, workflows, and constraints outlined in the User Personalization Profile.
+6. Synthesize all reasoning and tool results into a clear, helpful final response.`;
 
     // Prepare contents
     let currentContents = this._formatContents(messages);
