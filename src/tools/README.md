@@ -7,7 +7,9 @@ Welcome to the ChatGemma Tool System. This architecture makes adding, customizin
 ## Core Custom Tools
 
 1. **`knowledge_search`**: Searches the GraphRAG Knowledge Graph for interconnected entities, directed semantic triples, and multi-hop reasoning paths.
-2. **`grep`**: Regex and pattern search across conversation history.
+2. **`knowledge_graph_write`**: Explicitly writes, updates, and interlinks entity nodes and semantic relationships in the Knowledge Graph.
+3. **`knowledge_graph_delete`**: Soft-deletes entities or relationships by marking `isActive = false` without permanently destroying data.
+4. **`grep`**: Regex and pattern search across conversation history.
 
 ---
 

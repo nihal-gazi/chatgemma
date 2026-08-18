@@ -4,6 +4,7 @@ import { GemmaApiService } from "../services/api.js";
 import { SynapseStorageService } from "../services/storage.js";
 import { CloudSyncService } from "../services/firestore.js";
 import { knowledgeGraphInstance } from "../services/knowledgeGraph.js";
+import { personalizationInstance } from "../services/personalization.js";
 import { useAuth } from "./AuthContext.jsx";
 
 const ChatContext = createContext(null);
@@ -15,6 +16,12 @@ export function ChatProvider({ children }) {
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [knowledgeGraphStats, setKnowledgeGraphStats] = useState(() => knowledgeGraphInstance.getStats());
   const [isExtractingKnowledge, setIsExtractingKnowledge] = useState(false);
+
+  // Personalization (user.md) State
+  const [userProfileMarkdown, setUserProfileMarkdown] = useState(() => personalizationInstance.getProfile());
+  const [personalizationStats, setPersonalizationStats] = useState(() => personalizationInstance.getProfileStats());
+  const [isCompactingProfile, setIsCompactingProfile] = useState(false);
+
   const [sessions, setSessions] = useState(() => {
     const backup = SynapseStorageService.loadLocalBackup();
     if (backup?.sessions && backup.sessions.length > 0) {
@@ -44,6 +51,9 @@ export function ChatProvider({ children }) {
       modelId: backup?.settings?.modelId || CONFIG.defaultModelId,
       systemPrompt: backup?.settings?.systemPrompt || CONFIG.defaultSystemPrompt,
       cloudSyncEnabled: Boolean(backup?.settings?.cloudSyncEnabled),
+      allowKnowledgeGraphReadWrite: backup?.settings?.allowKnowledgeGraphReadWrite !== false,
+      enablePersonalization: backup?.settings?.enablePersonalization !== false,
+      personalizationMaxTokens: backup?.settings?.personalizationMaxTokens || 5000,
     };
   });
 
@@ -203,6 +213,24 @@ export function ChatProvider({ children }) {
 
     const newMessages = [...targetSession.messages, userMsg];
 
+    // Asynchronous Background Personalization Evaluation from User Prompt
+    if (settings.enablePersonalization !== false) {
+      personalizationInstance
+        .updateFromPrompt({
+          userMessage: promptText,
+          apiKey: settings.apiKey,
+          modelId: settings.modelId,
+          maxTokens: settings.personalizationMaxTokens || 5000,
+        })
+        .then((stats) => {
+          if (stats) {
+            setUserProfileMarkdown(personalizationInstance.getProfile());
+            setPersonalizationStats(stats);
+          }
+        })
+        .catch((e) => console.warn("[Personalization] Async prompt notice:", e));
+    }
+
     setSessions((prev) =>
       prev.map((s) =>
         s.id === targetSession.id
@@ -264,6 +292,8 @@ export function ChatProvider({ children }) {
         activeSession,
         sessions,
         knowledgeGraph: knowledgeGraphInstance,
+        personalizationProfile: userProfileMarkdown,
+        settings,
       };
 
       await apiServiceRef.current.streamChat(
@@ -314,17 +344,19 @@ export function ChatProvider({ children }) {
             const updatedHistory = [...messageHistory, assistantMsg];
 
             // Asynchronous Background LLM Knowledge Extraction (Gemma 31B + Google Search Grounding)
-            knowledgeGraphInstance
-              .extractWithLLM({
-                messages: updatedHistory,
-                apiKey: settings.apiKey,
-                modelId: settings.modelId,
-                sessionId,
-              })
-              .then((newStats) => {
-                if (newStats) setKnowledgeGraphStats(newStats);
-              })
-              .catch((e) => console.warn("[KnowledgeGraph] Async extraction notice:", e));
+            if (settings.allowKnowledgeGraphReadWrite !== false) {
+              knowledgeGraphInstance
+                .extractWithLLM({
+                  messages: updatedHistory,
+                  apiKey: settings.apiKey,
+                  modelId: settings.modelId,
+                  sessionId,
+                })
+                .then((newStats) => {
+                  if (newStats) setKnowledgeGraphStats(newStats);
+                })
+                .catch((e) => console.warn("[KnowledgeGraph] Async extraction notice:", e));
+            }
 
             setSessions((prev) =>
               prev.map((s) =>
@@ -374,13 +406,48 @@ export function ChatProvider({ children }) {
         settings.modelId
       );
       if (stats) setKnowledgeGraphStats(stats);
-      showToast(`Knowledge Graph updated (${stats?.totalEntities || 0} entities, ${stats?.totalRelations || 0} relations)`, "success");
+      showToast(`Knowledge Graph updated (${stats?.activeEntities || stats?.totalEntities || 0} active nodes)`, "success");
       return stats;
     } catch (err) {
       showToast(`Indexing failed: ${err.message}`, "error");
     } finally {
       setIsExtractingKnowledge(false);
     }
+  };
+
+  const updateUserProfileMarkdown = (newText) => {
+    const stats = personalizationInstance.setProfile(newText);
+    setUserProfileMarkdown(personalizationInstance.getProfile());
+    setPersonalizationStats(stats);
+    showToast("user.md profile saved!", "success");
+  };
+
+  const compactUserProfile = async (customMaxTokens) => {
+    setIsCompactingProfile(true);
+    showToast("Compacting user.md with Gemma...", "info");
+    try {
+      const targetTokens = customMaxTokens || settings.personalizationMaxTokens || 5000;
+      const stats = await personalizationInstance.compactProfile({
+        maxTokens: targetTokens,
+        apiKey: settings.apiKey,
+        modelId: settings.modelId,
+      });
+      setUserProfileMarkdown(personalizationInstance.getProfile());
+      setPersonalizationStats(stats);
+      showToast(`Compacted user.md to ${stats.tokens} tokens`, "success");
+      return stats;
+    } catch (err) {
+      showToast(`Compaction error: ${err.message}`, "error");
+    } finally {
+      setIsCompactingProfile(false);
+    }
+  };
+
+  const resetUserProfileMarkdown = () => {
+    const stats = personalizationInstance.resetProfile();
+    setUserProfileMarkdown(personalizationInstance.getProfile());
+    setPersonalizationStats(stats);
+    showToast("user.md reset to default template", "info");
   };
 
   const exportSynapseFile = async () => {
@@ -390,7 +457,8 @@ export function ChatProvider({ children }) {
         activeSessionId,
         settings,
         { displayName, email: user?.email },
-        knowledgeGraphInstance.exportGraph()
+        knowledgeGraphInstance.exportGraph(),
+        personalizationInstance.getProfile()
       );
       const res = await SynapseStorageService.exportToFile(state);
       showToast(res.message, res.success ? "success" : "info");
@@ -412,6 +480,11 @@ export function ChatProvider({ children }) {
       if (imported.knowledgeGraph) {
         knowledgeGraphInstance.importGraph(imported.knowledgeGraph);
         setKnowledgeGraphStats(knowledgeGraphInstance.getStats());
+      }
+      if (imported.userProfileMarkdown) {
+        personalizationInstance.setProfile(imported.userProfileMarkdown);
+        setUserProfileMarkdown(imported.userProfileMarkdown);
+        setPersonalizationStats(personalizationInstance.getProfileStats(settings.personalizationMaxTokens || 5000));
       }
       showToast("userdat.synapse loaded successfully!", "success");
     } catch (err) {
@@ -443,6 +516,12 @@ export function ChatProvider({ children }) {
         knowledgeGraphStats,
         isExtractingKnowledge,
         reindexKnowledgeGraph,
+        userProfileMarkdown,
+        personalizationStats,
+        isCompactingProfile,
+        updateUserProfileMarkdown,
+        compactUserProfile,
+        resetUserProfileMarkdown,
         stopGeneration,
         exportSynapseFile,
         importSynapseFile,

@@ -8,7 +8,7 @@ export class SynapseStorageService {
   /**
    * Packages full state into standard Synapse format.
    */
-  static packageState(sessions, activeSessionId, settings, userProfile, knowledgeGraph = null) {
+  static packageState(sessions, activeSessionId, settings, userProfile, knowledgeGraph = null, userProfileMarkdown = null) {
     return {
       version: "1.0.0",
       app: "ChatGemma",
@@ -22,10 +22,14 @@ export class SynapseStorageService {
         modelId: settings.modelId || CONFIG.defaultModelId,
         systemPrompt: settings.systemPrompt || CONFIG.defaultSystemPrompt,
         cloudSyncEnabled: Boolean(settings.cloudSyncEnabled),
+        allowKnowledgeGraphReadWrite: settings.allowKnowledgeGraphReadWrite !== false,
+        enablePersonalization: settings.enablePersonalization !== false,
+        personalizationMaxTokens: settings.personalizationMaxTokens || 5000,
       },
       activeSessionId: activeSessionId,
       sessions: sessions || [],
       knowledgeGraph: knowledgeGraph || null,
+      userProfileMarkdown: userProfileMarkdown || null,
     };
   }
 
@@ -98,6 +102,7 @@ export class SynapseStorageService {
       activeSessionId: data.activeSessionId || data.sessions[0]?.id || null,
       sessions: data.sessions,
       knowledgeGraph: data.knowledgeGraph || null,
+      userProfileMarkdown: data.userProfileMarkdown || null,
       exported_at: data.exported_at || null,
     };
   }

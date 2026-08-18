@@ -78,6 +78,7 @@ export class KnowledgeGraphService {
         aliases: mergedAliases,
         attributes: mergedAttributes,
         sourceSessions,
+        isActive: true, // Reactivates if it was soft-deleted
         lastUpdated: now,
       };
 
@@ -93,12 +94,22 @@ export class KnowledgeGraphService {
       aliases: Array.from(new Set([trimmedName.toLowerCase(), ...(Array.isArray(aliases) ? aliases : [])])),
       attributes: attributes || {},
       sourceSessions: sourceSession ? [sourceSession] : [],
+      isActive: true,
       createdAt: now,
       lastUpdated: now,
     };
 
     this.entities.set(entityId, newEntity);
     return newEntity;
+  }
+
+  /**
+   * Explicit LLM Write Entity method (creates or updates & reactivates)
+   */
+  writeEntity(data) {
+    const res = this.addEntity(data);
+    this.saveToStorage();
+    return res;
   }
 
   /**
@@ -151,6 +162,7 @@ export class KnowledgeGraphService {
       confidence: confidence || 0.9,
       contextSnippet: contextSnippet || "",
       sourceSession: sourceSession || "",
+      isActive: true,
       timestamp: now,
     };
 
@@ -158,6 +170,7 @@ export class KnowledgeGraphService {
       this.relations[existingIdx] = {
         ...this.relations[existingIdx],
         ...relationObj,
+        isActive: true, // Reactivate if it was soft-deleted
         weight: Math.min((this.relations[existingIdx].weight || 1.0) + 0.2, 5.0),
       };
       return this.relations[existingIdx];
@@ -165,6 +178,84 @@ export class KnowledgeGraphService {
 
     this.relations.push(relationObj);
     return relationObj;
+  }
+
+  /**
+   * Explicit LLM Write Relation method (creates or updates & reactivates)
+   */
+  writeRelation(data) {
+    const res = this.addRelation(data);
+    this.saveToStorage();
+    return res;
+  }
+
+  /**
+   * Soft Delete an Entity Node (Sets isActive = false and deactivates connected triples)
+   * The node is NEVER physically removed.
+   */
+  softDeleteEntity(nameOrId) {
+    const entity = this.findEntityByNameOrId(nameOrId);
+    if (!entity) {
+      return { success: false, message: `Entity "${nameOrId}" not found in Knowledge Graph.` };
+    }
+
+    entity.isActive = false;
+    entity.lastUpdated = new Date().toISOString();
+    this.entities.set(entity.id, entity);
+
+    // Soft-deactivate all connected triples
+    let deactivatedRelationsCount = 0;
+    for (const rel of this.relations) {
+      if (rel.sourceId === entity.id || rel.targetId === entity.id) {
+        rel.isActive = false;
+        deactivatedRelationsCount++;
+      }
+    }
+
+    this.saveToStorage();
+    return {
+      success: true,
+      entityId: entity.id,
+      entityName: entity.name,
+      isActive: false,
+      deactivatedRelationsCount,
+      message: `Entity "${entity.name}" soft-deleted (isActive: false). ${deactivatedRelationsCount} connected relations deactivated.`,
+    };
+  }
+
+  /**
+   * Soft Delete a Semantic Triple / Relation (Sets isActive = false)
+   * The relation is NEVER physically removed.
+   */
+  softDeleteRelation({ source, predicate, target }) {
+    if (!source || !predicate || !target) {
+      return { success: false, message: "source, predicate, and target are required." };
+    }
+
+    const sourceEntity = this.findEntityByNameOrId(source);
+    const targetEntity = this.findEntityByNameOrId(target);
+    const predicateUpper = (predicate || "").toUpperCase().replace(/\s+/g, "_");
+
+    if (!sourceEntity || !targetEntity) {
+      return { success: false, message: `Could not resolve source "${source}" or target "${target}".` };
+    }
+
+    const relationId = `rel_${sourceEntity.id}_${predicateUpper}_${targetEntity.id}`;
+    const rel = this.relations.find((r) => r.id === relationId);
+
+    if (!rel) {
+      return { success: false, message: `Relation (${source}) --[${predicate}]--> (${target}) not found.` };
+    }
+
+    rel.isActive = false;
+    this.saveToStorage();
+
+    return {
+      success: true,
+      relationId: rel.id,
+      isActive: false,
+      message: `Relation (${sourceEntity.name}) --[${predicateUpper}]--> (${targetEntity.name}) soft-deleted (isActive: false).`,
+    };
   }
 
   /**
@@ -218,6 +309,8 @@ export class KnowledgeGraphService {
     // 1. Entity Resolution (find seed nodes matching the query)
     const seedEntities = [];
     for (const entity of this.entities.values()) {
+      if (entity.isActive === false) continue; // Skip soft-deleted nodes
+
       let score = 0;
       const entityNameLower = entity.name.toLowerCase();
       const entityDescLower = (entity.description || "").toLowerCase();
@@ -262,6 +355,8 @@ export class KnowledgeGraphService {
       const currentHopEntityIds = new Set(currentHopEntities.map((e) => e.id));
 
       for (const rel of this.relations) {
+        if (rel.isActive === false) continue; // Skip soft-deleted relations
+
         const isOutgoing = currentHopEntityIds.has(rel.sourceId);
         const isIncoming = currentHopEntityIds.has(rel.targetId);
 
@@ -272,15 +367,17 @@ export class KnowledgeGraphService {
           continue;
         }
 
+        const neighborId = isOutgoing ? rel.targetId : rel.sourceId;
+        const neighborEntity = this.entities.get(neighborId);
+        if (neighborEntity && neighborEntity.isActive === false) continue;
+
         // Add triple to matched results if not already present
         if (!matchedTriples.some((t) => t.id === rel.id)) {
           matchedTriples.push(rel);
         }
 
-        const neighborId = isOutgoing ? rel.targetId : rel.sourceId;
         if (!visitedEntityIds.has(neighborId)) {
           visitedEntityIds.add(neighborId);
-          const neighborEntity = this.entities.get(neighborId);
           if (neighborEntity) {
             nextHopEntities.push(neighborEntity);
           }
@@ -586,20 +683,30 @@ Return ONLY a JSON object with this exact structure:
    * Returns current statistics of the Knowledge Graph.
    */
   getStats() {
+    let activeEntitiesCount = 0;
     const typeDistribution = {};
     for (const entity of this.entities.values()) {
-      for (const t of entity.types || ["Concept"]) {
-        typeDistribution[t] = (typeDistribution[t] || 0) + 1;
+      if (entity.isActive !== false) {
+        activeEntitiesCount++;
+        for (const t of entity.types || ["Concept"]) {
+          typeDistribution[t] = (typeDistribution[t] || 0) + 1;
+        }
       }
     }
 
+    let activeRelationsCount = 0;
     const predicateDistribution = {};
     for (const rel of this.relations) {
-      predicateDistribution[rel.predicate] = (predicateDistribution[rel.predicate] || 0) + 1;
+      if (rel.isActive !== false) {
+        activeRelationsCount++;
+        predicateDistribution[rel.predicate] = (predicateDistribution[rel.predicate] || 0) + 1;
+      }
     }
 
     return {
+      activeEntities: activeEntitiesCount,
       totalEntities: this.entities.size,
+      activeRelations: activeRelationsCount,
       totalRelations: this.relations.length,
       typeDistribution,
       predicateDistribution,

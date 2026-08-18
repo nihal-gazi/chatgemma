@@ -159,7 +159,7 @@ export class GemmaApiService {
         ? { includeServerSideToolInvocations: true }
         : undefined;
 
-    // 2. Dynamic Temporal Anchor
+    // 2. Dynamic Temporal Anchor & Personalization Context
     const currentDateStr = new Date().toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -167,15 +167,25 @@ export class GemmaApiService {
       day: "numeric",
     });
 
+    const isPersonalizationEnabled = executionContext.settings?.enablePersonalization !== false;
+    const userProfileMarkdown = executionContext.personalizationProfile || "";
+
+    const personalizationSection =
+      isPersonalizationEnabled && userProfileMarkdown.trim()
+        ? `\n\n[USER PERSONALIZATION PROFILE (user.md)]\n${userProfileMarkdown.trim()}\n---`
+        : "";
+
     const basePrompt = (this.systemPrompt || CONFIG.defaultSystemPrompt || "").trim();
     const fullSystemInstruction = `${basePrompt}
 
-Current Date: ${currentDateStr}.
+Current Date: ${currentDateStr}.${personalizationSection}
 
 PROTOCOL:
-1. Use available tools (knowledge_search, Google Search, Code Execution, Grep) when querying learned knowledge, web search grounding, computation, or history is needed.
+1. Use available tools (knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) when querying learned knowledge, updating the Knowledge Graph, web search grounding, computation, or history is needed.
 2. Use knowledge_search to explore interconnected entities, facts, projects, concepts, and relationships in the Knowledge Graph.
-3. Synthesize all reasoning and tool results into a clear, helpful final response.`;
+3. Use knowledge_graph_write to record new persistent facts, projects, preferences, or entity relationships learned during the conversation.
+4. Use knowledge_graph_delete to soft-delete outdated or incorrect entities/relations (which marks isActive = false).
+5. Synthesize all reasoning and tool results into a clear, helpful final response.`;
 
     // Prepare contents
     let currentContents = this._formatContents(messages);

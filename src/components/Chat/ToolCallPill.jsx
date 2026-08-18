@@ -5,6 +5,7 @@ import {
   Code,
   FileSearch,
   Share2,
+  Trash2,
   Sparkles,
   ChevronDown,
   ChevronRight,
@@ -20,6 +21,8 @@ const TOOL_ICON_MAP = {
   code_execution: Terminal,
   grep: FileSearch,
   knowledge_search: Share2,
+  knowledge_graph_write: Share2,
+  knowledge_graph_delete: Trash2,
   show_thought: Sparkles,
 };
 
@@ -42,6 +45,14 @@ export default function ToolCallPill({ toolCall }) {
     headerSummary = `/${args.pattern || ""}/`;
   } else if (name === "knowledge_search") {
     headerSummary = `"${args.query || ""}"${args.depth > 1 ? ` (depth: ${args.depth})` : ""}`;
+  } else if (name === "knowledge_graph_write") {
+    const entCount = (args.entities || []).length;
+    const relCount = (args.relationships || []).length;
+    headerSummary = `Write (${entCount} entities, ${relCount} relations)`;
+  } else if (name === "knowledge_graph_delete") {
+    const entCount = (args.entityNames || []).length;
+    const relCount = (args.relationships || []).length;
+    headerSummary = `Soft-delete (${entCount} entities, ${relCount} relations)`;
   } else if (name === "show_thought") {
     headerSummary = "Reasoning exposed";
   } else {
@@ -145,6 +156,8 @@ export default function ToolCallPill({ toolCall }) {
 function formatToolName(name) {
   if (!name) return "Tool";
   if (name === "knowledge_search") return "Knowledge Search";
+  if (name === "knowledge_graph_write") return "Knowledge Graph Write";
+  if (name === "knowledge_graph_delete") return "Knowledge Graph Delete";
   return name
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -158,6 +171,91 @@ function renderToolResponse(name, response) {
 
   if (response.error) {
     return <div className="tool-error-output">{response.error}</div>;
+  }
+
+  // Specialized Renderer for Knowledge Graph Write
+  if (name === "knowledge_graph_write") {
+    const hasEntities = Array.isArray(response.writtenEntities) && response.writtenEntities.length > 0;
+    const hasRelations = Array.isArray(response.writtenRelations) && response.writtenRelations.length > 0;
+
+    return (
+      <div className="kg-results-container">
+        <div className="tool-status-message success">
+          Successfully written {response.writtenEntitiesCount || 0} entities and {response.writtenRelationsCount || 0} relationships.
+        </div>
+        {hasEntities && (
+          <div className="kg-section">
+            <div className="kg-section-subtitle">Entities Added/Updated:</div>
+            <div className="kg-entities-grid">
+              {response.writtenEntities.map((ent, idx) => (
+                <div key={idx} className="kg-entity-chip">
+                  <div className="kg-entity-header">
+                    <span className="kg-entity-name">{ent.name}</span>
+                    {ent.types && <span className="kg-entity-type-badge">{ent.types.join(", ")}</span>}
+                  </div>
+                  {ent.description && <div className="kg-entity-desc">{ent.description}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {hasRelations && (
+          <div className="kg-section">
+            <div className="kg-section-subtitle">Relationships Created:</div>
+            <div className="kg-triples-list">
+              {response.writtenRelations.map((rel, idx) => (
+                <div key={idx} className="kg-triple-card">
+                  <div className="kg-triple-visual">
+                    <span className="kg-node subject">{rel.source}</span>
+                    <span className="kg-edge-arrow">&rarr; {rel.predicate} &rarr;</span>
+                    <span className="kg-node object">{rel.target}</span>
+                  </div>
+                  {rel.description && <div className="kg-triple-desc">{rel.description}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Specialized Renderer for Knowledge Graph Delete (Soft Delete)
+  if (name === "knowledge_graph_delete") {
+    const hasEntities = Array.isArray(response.entityResults) && response.entityResults.length > 0;
+    const hasRelations = Array.isArray(response.relationResults) && response.relationResults.length > 0;
+
+    return (
+      <div className="kg-results-container">
+        <div className="tool-status-message warning">
+          Soft-deleted {response.softDeletedEntitiesCount || 0} entities and {response.softDeletedRelationsCount || 0} relationships (isActive set to false).
+        </div>
+        {hasEntities && (
+          <div className="kg-section">
+            <div className="kg-section-subtitle">Soft-Deleted Entities:</div>
+            <div className="kg-triples-list">
+              {response.entityResults.map((ent, idx) => (
+                <div key={idx} className="kg-triple-card">
+                  <div className="kg-triple-desc">{ent.message || `Entity ${ent.entityName} soft-deleted`}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {hasRelations && (
+          <div className="kg-section">
+            <div className="kg-section-subtitle">Soft-Deleted Relations:</div>
+            <div className="kg-triples-list">
+              {response.relationResults.map((rel, idx) => (
+                <div key={idx} className="kg-triple-card">
+                  <div className="kg-triple-desc">{rel.message || "Relation soft-deleted"}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   // Specialized Renderer for Knowledge Graph Search (GraphRAG)

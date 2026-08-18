@@ -45,6 +45,16 @@ export const knowledgeSearchTool = {
   renderSummary: (args) => `KG: "${args.query || ""}"${args.depth > 1 ? ` (depth: ${args.depth})` : ""}`,
 
   async execute(args, context = {}) {
+    // Permission Check
+    const isAllowed = context.settings?.allowKnowledgeGraphReadWrite !== false;
+    if (!isAllowed) {
+      return {
+        error:
+          "Permission denied: LLM Knowledge Graph read/write access is disabled in Settings. Please enable it in Settings to allow searching the graph.",
+        status: "permission_denied",
+      };
+    }
+
     const query = (args.query || "").trim();
     const types = args.types || [];
     const relations = args.relations || [];

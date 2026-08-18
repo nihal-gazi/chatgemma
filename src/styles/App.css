@@ -2433,7 +2433,7 @@
   font-weight: 500;
 }
 
-.modal-text-input, .modal-textarea {
+.modal-text-input, .modal-textarea, .modal-textarea-input {
   background: var(--gemini-bg);
   border: 1px solid var(--gemini-border);
   border-radius: var(--radius-sm);
@@ -2444,8 +2444,44 @@
   outline: none;
 }
 
-.modal-text-input:focus, .modal-textarea:focus {
+.modal-textarea-input {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 160px;
+}
+
+.modal-text-input:focus, .modal-textarea:focus, .modal-textarea-input:focus {
   border-color: var(--gemini-sparkle-blue);
+}
+
+.token-counter-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 8px;
+  border-radius: 12px;
+  color: var(--gemini-text-secondary);
+}
+
+.tool-status-message {
+  font-size: 0.76rem;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+}
+
+.tool-status-message.success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.tool-status-message.warning {
+  background: rgba(234, 179, 8, 0.12);
+  color: #fde047;
+  border: 1px solid rgba(234, 179, 8, 0.2);
 }
 
 .btn-modal-action {

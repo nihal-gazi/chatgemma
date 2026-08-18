@@ -8,10 +8,14 @@
 import { toolRegistry } from "./registry.js";
 import { grepTool } from "./implementations/grep.js";
 import { knowledgeSearchTool } from "./implementations/knowledge_search.js";
+import { knowledgeGraphWriteTool } from "./implementations/knowledge_graph_write.js";
+import { knowledgeGraphDeleteTool } from "./implementations/knowledge_graph_delete.js";
 
 // Register Custom Function Calling Tools
 toolRegistry.register(grepTool);
 toolRegistry.register(knowledgeSearchTool);
+toolRegistry.register(knowledgeGraphWriteTool);
+toolRegistry.register(knowledgeGraphDeleteTool);
 
 export { toolRegistry };
-export { grepTool, knowledgeSearchTool };
+export { grepTool, knowledgeSearchTool, knowledgeGraphWriteTool, knowledgeGraphDeleteTool };
