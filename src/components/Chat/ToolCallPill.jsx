@@ -6,6 +6,7 @@ import {
   FileSearch,
   Share2,
   Trash2,
+  FileText,
   Sparkles,
   ChevronDown,
   ChevronRight,
