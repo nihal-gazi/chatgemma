@@ -484,7 +484,8 @@ Return ONLY a JSON object with this exact structure:
   ]
 }`;
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+    const rawModel = CONFIG.resolveModelName(modelId);
+    const endpoint = `${CONFIG.apiBaseUrl}/${rawModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
 
     const payload = {
       contents: [

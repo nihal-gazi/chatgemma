@@ -54,4 +54,13 @@ export const CONFIG = {
 
   // File export default name
   defaultSynapseFileName: "userdat.synapse",
+
+  // Helper to resolve UI model setting ID (e.g. 'gemma-4-31b-it-high') to raw API model identifier ('gemma-4-31b-it')
+  resolveModelName(modelId) {
+    if (!modelId || typeof modelId !== "string") return "gemma-4-31b-it";
+    const found = this.models?.find((m) => m.id === modelId);
+    if (found && found.model) return found.model;
+    return modelId.replace(/-(?:high|low)$/i, "");
+  },
 };
+

@@ -95,7 +95,8 @@ ${userMessage.trim()}
 
 Return ONLY the updated user.md markdown text:`;
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+    const rawModel = CONFIG.resolveModelName(modelId);
+    const endpoint = `${CONFIG.apiBaseUrl}/${rawModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
 
     const payload = {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -198,7 +199,8 @@ Maintain clean markdown sections (e.g. ## Identity & Background, ## Preferences 
 
 Return ONLY the updated user.md markdown text:`;
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+    const rawModel = CONFIG.resolveModelName(modelId);
+    const endpoint = `${CONFIG.apiBaseUrl}/${rawModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
 
     const payload = {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -279,7 +281,8 @@ ${this.profileMarkdown}
 
 Return ONLY the compacted user.md markdown text:`;
 
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+      const rawModel = CONFIG.resolveModelName(modelId);
+      const endpoint = `${CONFIG.apiBaseUrl}/${rawModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
 
       const payload = {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
