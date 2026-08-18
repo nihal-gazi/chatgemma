@@ -12,6 +12,7 @@ export default function SettingsModal({ isOpen, onClose }) {
     exportSynapseFile,
     importSynapseFile,
     knowledgeGraphStats,
+    isExtractingKnowledge,
     reindexKnowledgeGraph,
     showToast,
   } = useChat();
@@ -215,7 +216,7 @@ export default function SettingsModal({ isOpen, onClose }) {
               <div className="tab-pane">
                 <h3>GraphRAG Knowledge Graph</h3>
                 <p className="tab-desc">
-                  Interconnected entities, semantic triples, and multi-hop reasoning facts powered by Google Knowledge Graph standards.
+                  Powered by <strong>Gemma 31B</strong> with <strong>Google Search Grounding</strong> for automated factual entity-relation extraction.
                 </p>
 
                 <div className="kg-stats-card">
@@ -244,8 +245,13 @@ export default function SettingsModal({ isOpen, onClose }) {
                 )}
 
                 <div className="kg-action-box">
-                  <button className="btn-modal-action" onClick={reindexKnowledgeGraph}>
-                    <RotateCcw size={15} /> Re-index Graph from All Chats
+                  <button
+                    className="btn-modal-action"
+                    onClick={reindexKnowledgeGraph}
+                    disabled={isExtractingKnowledge}
+                  >
+                    <RotateCcw size={15} className={isExtractingKnowledge ? "spin" : ""} />
+                    {isExtractingKnowledge ? "Extracting with Gemma 31B & Google Search..." : "Re-index Graph with Gemma 31B"}
                   </button>
                   <p className="kg-help-note">
                     The agent automatically invokes the <code>knowledge_search</code> tool to discover connections, relationships, and concepts across your sessions.

@@ -14,6 +14,7 @@ export function ChatProvider({ children }) {
   // Load Initial State from LocalStorage backup
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [knowledgeGraphStats, setKnowledgeGraphStats] = useState(() => knowledgeGraphInstance.getStats());
+  const [isExtractingKnowledge, setIsExtractingKnowledge] = useState(false);
   const [sessions, setSessions] = useState(() => {
     const backup = SynapseStorageService.loadLocalBackup();
     if (backup?.sessions && backup.sessions.length > 0) {
@@ -312,9 +313,18 @@ export function ChatProvider({ children }) {
 
             const updatedHistory = [...messageHistory, assistantMsg];
 
-            // Automatically extract knowledge from completed turn into Knowledge Graph
-            knowledgeGraphInstance.extractFromMessages(updatedHistory, sessionId);
-            setKnowledgeGraphStats(knowledgeGraphInstance.getStats());
+            // Asynchronous Background LLM Knowledge Extraction (Gemma 31B + Google Search Grounding)
+            knowledgeGraphInstance
+              .extractWithLLM({
+                messages: updatedHistory,
+                apiKey: settings.apiKey,
+                modelId: settings.modelId,
+                sessionId,
+              })
+              .then((newStats) => {
+                if (newStats) setKnowledgeGraphStats(newStats);
+              })
+              .catch((e) => console.warn("[KnowledgeGraph] Async extraction notice:", e));
 
             setSessions((prev) =>
               prev.map((s) =>
@@ -354,14 +364,22 @@ export function ChatProvider({ children }) {
     }
   };
 
-  const reindexKnowledgeGraph = () => {
+  const reindexKnowledgeGraph = async () => {
+    setIsExtractingKnowledge(true);
+    showToast("Extracting knowledge with Gemma 31B & Google Search...", "info");
     try {
-      const stats = knowledgeGraphInstance.reindexAllSessions(sessions);
-      setKnowledgeGraphStats(stats);
-      showToast(`Knowledge Graph updated (${stats.totalEntities} entities, ${stats.totalRelations} relations)`, "success");
+      const stats = await knowledgeGraphInstance.reindexAllSessions(
+        sessions,
+        settings.apiKey,
+        settings.modelId
+      );
+      if (stats) setKnowledgeGraphStats(stats);
+      showToast(`Knowledge Graph updated (${stats?.totalEntities || 0} entities, ${stats?.totalRelations || 0} relations)`, "success");
       return stats;
     } catch (err) {
       showToast(`Indexing failed: ${err.message}`, "error");
+    } finally {
+      setIsExtractingKnowledge(false);
     }
   };
 
@@ -423,6 +441,7 @@ export function ChatProvider({ children }) {
         currentStreamingReasoningBlocks,
         knowledgeGraph: knowledgeGraphInstance,
         knowledgeGraphStats,
+        isExtractingKnowledge,
         reindexKnowledgeGraph,
         stopGeneration,
         exportSynapseFile,

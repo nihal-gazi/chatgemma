@@ -1,8 +1,4 @@
-/**
- * Knowledge Graph Service for ChatGemma (GraphRAG & Google Knowledge Graph Principles)
- * Manages schema.org-compliant entity nodes, directed semantic triples (edges),
- * multi-hop graph traversals, and automated entity-relation extraction.
- */
+import { CONFIG } from "../config/config.js";
 
 const STORAGE_KEY = "chatgemma_knowledge_graph_v1";
 
@@ -346,81 +342,152 @@ export class KnowledgeGraphService {
   }
 
   /**
-   * Automated Knowledge Extraction from messages / text
-   * Extracts entities and semantic relationships using structured heuristics and patterns.
+   * Background LLM Knowledge Extraction
+   * Uses Gemma 31B (gemma-4-31b-it) with Google Search Grounding to extract
+   * verified, structured entities and semantic relationships from chat context.
    */
-  extractFromMessages(messages, sessionId = "") {
-    if (!Array.isArray(messages)) return;
+  async extractWithLLM({ messages, apiKey, modelId = "gemma-4-31b-it", sessionId = "", signal = null }) {
+    if (!Array.isArray(messages) || messages.length === 0) return null;
 
-    for (const msg of messages) {
-      if (!msg.content || typeof msg.content !== "string") continue;
-      const text = msg.content;
+    const cleanKey = (apiKey || CONFIG.defaultApiKey || "").trim().replace(/^["']|["']$/g, "");
+    if (!cleanKey) return null;
 
-      // 1. Identify User Profile & Identity Facts
-      // Pattern: "my name is X", "I am X", "I work at X", "I am building X"
-      const nameMatch = text.match(/\b(?:my name is|i am|i'm called)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i);
-      if (nameMatch && nameMatch[1]) {
-        const userName = nameMatch[1].trim();
-        const userEntity = this.addEntity({
-          name: userName,
-          types: ["Person"],
-          description: `User identified as ${userName}`,
-          sourceSession: sessionId,
-        });
+    // Window last 10 messages for focused context
+    const recentMessages = messages.slice(-10);
+    const transcript = recentMessages
+      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content || ""}`)
+      .filter((t) => t.length > 5)
+      .join("\n\n");
 
-        // Preference or role match
-        const roleMatch = text.match(/\b(?:i am a|i work as a|my role is)\s+([^,.\n]+)/i);
-        if (roleMatch && userEntity) {
-          const role = roleMatch[1].trim();
-          this.addRelation({
-            source: userEntity,
-            predicate: "WORKS_ON",
-            target: role,
-            description: `${userName} works as ${role}`,
-            contextSnippet: text.slice(0, 100),
-            sourceSession: sessionId,
-          });
-        }
-      }
+    if (transcript.length < 10) return null;
 
-      // 2. Project / Creator Relations: "X created Y", "X developed Y", "X founded Y"
-      const creatorRegex = /([A-Z][a-zA-Z0-9_\s]{2,25}?)\s+(?:created|built|developed|founded|authored|designed)\s+([A-Z][a-zA-Z0-9_\s]{2,30})/g;
-      let cMatch;
-      while ((cMatch = creatorRegex.exec(text)) !== null) {
-        const subject = cMatch[1].trim();
-        const object = cMatch[2].trim();
-        if (subject.length > 2 && object.length > 2 && subject.toLowerCase() !== "i") {
-          this.addRelation({
-            source: subject,
-            predicate: "CREATED",
-            target: object,
-            description: `${subject} created ${object}`,
-            contextSnippet: text.slice(Math.max(0, cMatch.index - 20), cMatch.index + 80),
-            sourceSession: sessionId,
-          });
-        }
-      }
+    const prompt = `You are the Knowledge Graph extraction engine for ChatGemma.
+Analyze this chat transcript and extract all factual entities (people, companies, projects, concepts, tools, technologies) and their directed relationships.
+Use Google Search Grounding to verify real-world accuracy, definitions, and company/project details if needed.
 
-      // 3. Technology / Usage Relations: "X uses Y", "X is built with Y", "X powered by Y"
-      const usageRegex = /([A-Z][a-zA-Z0-9_\s]{2,25}?)\s+(?:is powered by|uses|built with|runs on)\s+([A-Z][a-zA-Z0-9_\s]{2,30})/g;
-      let uMatch;
-      while ((uMatch = usageRegex.exec(text)) !== null) {
-        const subject = uMatch[1].trim();
-        const object = uMatch[2].trim();
-        if (subject.length > 2 && object.length > 2) {
-          this.addRelation({
-            source: subject,
-            predicate: "USES",
-            target: object,
-            description: `${subject} uses ${object}`,
-            contextSnippet: text.slice(Math.max(0, uMatch.index - 20), uMatch.index + 80),
-            sourceSession: sessionId,
-          });
-        }
-      }
+Chat Transcript:
+"""
+${transcript}
+"""
+
+Return ONLY a JSON object with this exact structure:
+{
+  "entities": [
+    {
+      "name": "Canonical Entity Name",
+      "types": ["Person" | "Organization" | "Project" | "Technology" | "Concept" | "Location" | "Preference"],
+      "description": "Concise factual summary",
+      "aliases": ["Acronym or alternative name"]
     }
+  ],
+  "relationships": [
+    {
+      "source": "Source Entity Name",
+      "predicate": "RELATION_TYPE",
+      "target": "Target Entity Name",
+      "description": "Clear factual sentence describing the relationship",
+      "confidence": 0.95
+    }
+  ]
+}`;
 
-    this.saveToStorage();
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+
+    const payload = {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      ],
+      tools: [{ googleSearch: {} }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 2048,
+        thinkingConfig: {
+          thinkingLevel: "MINIMAL",
+        },
+      },
+    };
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal,
+      });
+
+      if (!res.ok) {
+        console.warn(`[KnowledgeGraph] Background LLM extraction returned ${res.status}`);
+        return null;
+      }
+
+      const data = await res.json();
+      const candidate = data.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
+      const rawText =
+        parts
+          .filter((p) => !p.thought && typeof p.text === "string")
+          .map((p) => p.text)
+          .join("\n") || parts.map((p) => p.text || "").join("\n");
+
+      // Extract JSON substring from markdown block or find outer braces { ... }
+      let jsonStr = "";
+      const jsonBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (jsonBlockMatch && jsonBlockMatch[1]) {
+        jsonStr = jsonBlockMatch[1].trim();
+      } else {
+        const firstBrace = rawText.indexOf("{");
+        const lastBrace = rawText.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          jsonStr = rawText.slice(firstBrace, lastBrace + 1).trim();
+        }
+      }
+
+      if (!jsonStr) return null;
+
+      const parsed = JSON.parse(jsonStr);
+
+      // Ingest entities
+      if (Array.isArray(parsed.entities)) {
+        for (const ent of parsed.entities) {
+          if (ent.name) {
+            this.addEntity({
+              name: ent.name,
+              types: ent.types || ["Concept"],
+              description: ent.description || "",
+              aliases: ent.aliases || [],
+              sourceSession: sessionId,
+            });
+          }
+        }
+      }
+
+      // Ingest relationships
+      if (Array.isArray(parsed.relationships)) {
+        for (const rel of parsed.relationships) {
+          if (rel.source && rel.target && rel.predicate) {
+            this.addRelation({
+              source: rel.source,
+              predicate: rel.predicate,
+              target: rel.target,
+              description: rel.description || "",
+              confidence: rel.confidence || 0.9,
+              sourceSession: sessionId,
+            });
+          }
+        }
+      }
+
+      this.saveToStorage();
+      return this.getStats();
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        console.warn("[KnowledgeGraph] Background LLM extraction error:", err);
+      }
+      return null;
+    }
   }
 
   /**
@@ -495,14 +562,19 @@ export class KnowledgeGraphService {
   }
 
   /**
-   * Re-indexes the entire knowledge graph from all existing chat sessions.
+   * Re-indexes the entire knowledge graph from all existing chat sessions using Background LLM.
    */
-  reindexAllSessions(sessions) {
+  async reindexAllSessions(sessions, apiKey, modelId = "gemma-4-31b-it") {
     if (!Array.isArray(sessions)) return this.getStats();
 
     for (const session of sessions) {
-      if (session.messages && Array.isArray(session.messages)) {
-        this.extractFromMessages(session.messages, session.id);
+      if (session.messages && session.messages.length > 0) {
+        await this.extractWithLLM({
+          messages: session.messages,
+          apiKey,
+          modelId,
+          sessionId: session.id,
+        });
       }
     }
 
