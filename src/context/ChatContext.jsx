@@ -3,7 +3,7 @@ import { CONFIG } from "../config/config.js";
 import { GemmaApiService } from "../services/api.js";
 import { SynapseStorageService } from "../services/storage.js";
 import { CloudSyncService } from "../services/firestore.js";
-import { knowledgeGraphInstance } from "../services/knowledgeGraph.js";
+import { knowledgeGraphInstance, userKnowledgeGraphInstance } from "../services/knowledgeGraph.js";
 import { personalizationInstance } from "../services/personalization.js";
 import { useAuth } from "./AuthContext.jsx";
 
@@ -15,6 +15,7 @@ export function ChatProvider({ children }) {
   // Load Initial State from LocalStorage backup
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [knowledgeGraphStats, setKnowledgeGraphStats] = useState(() => knowledgeGraphInstance.getStats());
+  const [userKnowledgeGraphStats, setUserKnowledgeGraphStats] = useState(() => userKnowledgeGraphInstance.getStats());
   const [isExtractingKnowledge, setIsExtractingKnowledge] = useState(false);
   const [userProfileMarkdown, setUserProfileMarkdown] = useState(() => personalizationInstance.getProfile());
   const [isCompactingProfile, setIsCompactingProfile] = useState(false);
@@ -285,6 +286,7 @@ export function ChatProvider({ children }) {
         activeSession,
         sessions,
         knowledgeGraph: knowledgeGraphInstance,
+        userKnowledgeGraph: userKnowledgeGraphInstance,
         personalization: personalizationInstance,
         userProfileMarkdown,
         settings,
@@ -450,7 +452,8 @@ export function ChatProvider({ children }) {
         settings,
         { displayName, email: user?.email },
         knowledgeGraphInstance.exportGraph(),
-        personalizationInstance.getProfile()
+        personalizationInstance.getProfile(),
+        userKnowledgeGraphInstance.exportGraph()
       );
       const res = await SynapseStorageService.exportToFile(state);
       showToast(res.message, res.success ? "success" : "info");
@@ -472,6 +475,10 @@ export function ChatProvider({ children }) {
       if (imported.knowledgeGraph) {
         knowledgeGraphInstance.importGraph(imported.knowledgeGraph);
         setKnowledgeGraphStats(knowledgeGraphInstance.getStats());
+      }
+      if (imported.userKnowledgeGraph) {
+        userKnowledgeGraphInstance.importGraph(imported.userKnowledgeGraph);
+        setUserKnowledgeGraphStats(userKnowledgeGraphInstance.getStats());
       }
       if (imported.userProfileMarkdown) {
         personalizationInstance.setProfile(imported.userProfileMarkdown);
@@ -505,6 +512,8 @@ export function ChatProvider({ children }) {
         currentStreamingReasoningBlocks,
         knowledgeGraph: knowledgeGraphInstance,
         knowledgeGraphStats,
+        userKnowledgeGraph: userKnowledgeGraphInstance,
+        userKnowledgeGraphStats,
         isExtractingKnowledge,
         reindexKnowledgeGraph,
         userProfileMarkdown,

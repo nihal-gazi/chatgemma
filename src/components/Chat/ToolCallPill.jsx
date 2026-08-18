@@ -23,6 +23,9 @@ const TOOL_ICON_MAP = {
   knowledge_search: Share2,
   knowledge_graph_write: Share2,
   knowledge_graph_delete: Trash2,
+  user_knowledge_graph_search: FileText,
+  user_knowledge_graph_write: FileText,
+  user_knowledge_graph_delete: Trash2,
   show_thought: Sparkles,
 };
 
@@ -45,14 +48,24 @@ export default function ToolCallPill({ toolCall }) {
     headerSummary = `/${args.pattern || ""}/`;
   } else if (name === "knowledge_search") {
     headerSummary = `"${args.query || ""}"${args.depth > 1 ? ` (depth: ${args.depth})` : ""}`;
+  } else if (name === "user_knowledge_graph_search") {
+    headerSummary = `User: "${args.query || ""}"${args.depth > 1 ? ` (depth: ${args.depth})` : ""}`;
   } else if (name === "knowledge_graph_write") {
     const eCount = args.entities?.length || 0;
     const rCount = args.relationships?.length || 0;
     headerSummary = `+${eCount} ent, +${rCount} rel`;
+  } else if (name === "user_knowledge_graph_write") {
+    const eCount = args.entities?.length || 0;
+    const rCount = args.relationships?.length || 0;
+    headerSummary = `User: +${eCount} ent, +${rCount} rel`;
   } else if (name === "knowledge_graph_delete") {
     const eCount = args.entityNames?.length || 0;
     const rCount = args.relationships?.length || 0;
     headerSummary = `-${eCount} ent, -${rCount} rel`;
+  } else if (name === "user_knowledge_graph_delete") {
+    const eCount = args.entityNames?.length || 0;
+    const rCount = args.relationships?.length || 0;
+    headerSummary = `User: -${eCount} ent, -${rCount} rel`;
   } else if (name === "show_thought") {
     headerSummary = "Reasoning exposed";
   } else {
@@ -158,6 +171,9 @@ function formatToolName(name) {
   if (name === "knowledge_search") return "Knowledge Search";
   if (name === "knowledge_graph_write") return "Knowledge Graph Write";
   if (name === "knowledge_graph_delete") return "Knowledge Graph Delete";
+  if (name === "user_knowledge_graph_search") return "User KG Search";
+  if (name === "user_knowledge_graph_write") return "User KG Write";
+  if (name === "user_knowledge_graph_delete") return "User KG Delete";
   return name
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -173,8 +189,8 @@ function renderToolResponse(name, response) {
     return <div className="tool-error-output">{response.error}</div>;
   }
 
-  // Specialized Renderer for Knowledge Graph Write
-  if (name === "knowledge_graph_write") {
+  // Specialized Renderer for Knowledge Graph Write / User KG Write
+  if (name === "knowledge_graph_write" || name === "user_knowledge_graph_write") {
     const hasEntities = Array.isArray(response.entitiesWritten) && response.entitiesWritten.length > 0;
     const hasRelations = Array.isArray(response.relationsWritten) && response.relationsWritten.length > 0;
 
@@ -222,8 +238,8 @@ function renderToolResponse(name, response) {
     );
   }
 
-  // Specialized Renderer for Knowledge Graph Delete (Soft Delete)
-  if (name === "knowledge_graph_delete") {
+  // Specialized Renderer for Knowledge Graph Delete (Soft Delete) / User KG Delete
+  if (name === "knowledge_graph_delete" || name === "user_knowledge_graph_delete") {
     const hasEntities = Array.isArray(response.entitiesSoftDeleted) && response.entitiesSoftDeleted.length > 0;
     const hasRelations = Array.isArray(response.relationsSoftDeleted) && response.relationsSoftDeleted.length > 0;
 
@@ -265,8 +281,8 @@ function renderToolResponse(name, response) {
     );
   }
 
-  // Specialized Renderer for Knowledge Graph Search (GraphRAG)
-  if (name === "knowledge_search") {
+  // Specialized Renderer for Knowledge Graph Search / User KG Search
+  if (name === "knowledge_search" || name === "user_knowledge_graph_search") {
     const hasEntities = Array.isArray(response.matchedEntities) && response.matchedEntities.length > 0;
     const hasFacts = Array.isArray(response.facts) && response.facts.length > 0;
     const hasPaths = Array.isArray(response.paths) && response.paths.length > 0;

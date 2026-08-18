@@ -9,7 +9,10 @@ Welcome to the ChatGemma Tool System. This architecture makes adding, customizin
 1. **`knowledge_search`**: Searches the GraphRAG Knowledge Graph for interconnected entities, directed semantic triples, and multi-hop reasoning paths.
 2. **`knowledge_graph_write`**: Creates, updates, or reinforces factual entities and directed semantic relationships (triples) into the persistent Knowledge Graph.
 3. **`knowledge_graph_delete`**: Soft-deletes entities or relationships from active retrieval (`isActive = false`), preserving data without permanent deletion.
-4. **`grep`**: Regex and pattern search across conversation history.
+4. **`user_knowledge_graph_search`**: Searches the dedicated User Knowledge Graph for personal preferences, workflows, background, tools, and projects.
+5. **`user_knowledge_graph_write`**: Ingests personal user facts/triples and automatically syncs `user.md` via Background LLM.
+6. **`user_knowledge_graph_delete`**: Soft-deletes personal user facts/triples (`isActive = false`) and automatically syncs `user.md` via Background LLM.
+7. **`grep`**: Regex and pattern search across conversation history.
 
 ---
 

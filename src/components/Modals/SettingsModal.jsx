@@ -26,6 +26,7 @@ export default function SettingsModal({ isOpen, onClose }) {
     exportSynapseFile,
     importSynapseFile,
     knowledgeGraphStats,
+    userKnowledgeGraphStats,
     isExtractingKnowledge,
     reindexKnowledgeGraph,
     userProfileMarkdown,
@@ -270,6 +271,33 @@ export default function SettingsModal({ isOpen, onClose }) {
                     onChange={(e) => handleSaveMaxTokens(e.target.value)}
                   />
                   <p className="field-hint">When <code>user.md</code> exceeds this limit, recursive compaction distillates the profile.</p>
+                </div>
+
+                <div className="kg-stats-card" style={{ padding: "10px 14px", margin: "12px 0 6px 0" }}>
+                  <div className="kg-stat-item">
+                    <span className="kg-stat-number" style={{ fontSize: "1.2rem" }}>
+                      {userKnowledgeGraphStats?.totalEntities || 0}
+                    </span>
+                    <span className="kg-stat-label">User Entities</span>
+                  </div>
+                  <div className="kg-stat-divider" style={{ height: "24px" }} />
+                  <div className="kg-stat-item">
+                    <span className="kg-stat-number" style={{ fontSize: "1.2rem" }}>
+                      {userKnowledgeGraphStats?.totalRelations || 0}
+                    </span>
+                    <span className="kg-stat-label">User Relations</span>
+                  </div>
+                  {Boolean(userKnowledgeGraphStats?.inactiveEntities) && (
+                    <>
+                      <div className="kg-stat-divider" style={{ height: "24px" }} />
+                      <div className="kg-stat-item">
+                        <span className="kg-stat-number muted" style={{ fontSize: "1.2rem" }}>
+                          {userKnowledgeGraphStats.inactiveEntities}
+                        </span>
+                        <span className="kg-stat-label">Soft-Deleted</span>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="form-field" style={{ marginTop: "14px" }}>

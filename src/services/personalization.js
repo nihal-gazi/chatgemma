@@ -149,6 +149,109 @@ Return ONLY the updated user.md markdown text:`;
   }
 
   /**
+   * Synchronizes and updates user.md from the active User Knowledge Graph using Background LLM.
+   * Called whenever user_knowledge_graph_write or user_knowledge_graph_delete modifies the user graph.
+   */
+  async syncFromUserKnowledgeGraph({
+    userKnowledgeGraph,
+    modificationSummary = "",
+    apiKey,
+    modelId = "gemma-4-31b-it",
+    maxTokens = 5000,
+    signal = null,
+  }) {
+    if (!userKnowledgeGraph) return this.profileMarkdown;
+
+    const cleanKey = (apiKey || CONFIG.defaultApiKey || "").trim().replace(/^["']|["']$/g, "");
+    if (!cleanKey) return this.profileMarkdown;
+
+    const activeEntities = Array.from(userKnowledgeGraph.entities.values()).filter((e) => e.isActive !== false);
+    const activeRelations = (userKnowledgeGraph.relations || []).filter((r) => r.isActive !== false);
+
+    const entitiesSummary =
+      activeEntities.length > 0
+        ? activeEntities.map((e) => `• [${e.name}] (${(e.types || []).join(", ")}): ${e.description}`).join("\n")
+        : "No active user entities.";
+
+    const relationsSummary =
+      activeRelations.length > 0
+        ? activeRelations.map((r) => `• ${r.sourceName} --[${r.predicate}]--> ${r.targetName}: "${r.description}"`).join("\n")
+        : "No active user relations.";
+
+    const prompt = `You are the Personalization Synchronization Engine for ChatGemma.
+The User Knowledge Graph has just been modified (${modificationSummary || "graph update"}).
+
+Active User Knowledge Graph Entities (${activeEntities.length}):
+${entitiesSummary}
+
+Active User Knowledge Graph Relations & Triples (${activeRelations.length}):
+${relationsSummary}
+
+Current user.md Profile:
+"""
+${this.profileMarkdown}
+"""
+
+Task: Update the user.md markdown profile to accurately, concisely, and comprehensively reflect all active user facts, preferences, background, projects, and relationships.
+If any fact or entity was soft-deleted or removed from the active graph, ensure it is removed or reconciled in user.md.
+Maintain clean markdown sections (e.g. ## Identity & Background, ## Preferences & Workflows, ## Key Projects & Technologies).
+
+Return ONLY the updated user.md markdown text:`;
+
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+
+    const payload = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 2048,
+        thinkingConfig: { thinkingLevel: "MINIMAL" },
+      },
+    };
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal,
+      });
+
+      if (!res.ok) {
+        console.warn(`[Personalization] syncFromUserKnowledgeGraph API returned ${res.status}`);
+        return this.profileMarkdown;
+      }
+
+      const data = await res.json();
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      let rawText =
+        parts.filter((p) => !p.thought && typeof p.text === "string").map((p) => p.text).join("\n") ||
+        parts.map((p) => p.text || "").join("\n");
+
+      const mdMatch = rawText.match(/```(?:markdown|md)?\s*([\s\S]*?)\s*```/i);
+      if (mdMatch && mdMatch[1]) {
+        rawText = mdMatch[1].trim();
+      }
+
+      if (rawText && rawText.length > 20) {
+        this.profileMarkdown = rawText.trim();
+        this.saveToStorage();
+
+        if (this.estimateTokens(this.profileMarkdown) > maxTokens) {
+          await this.compactProfile({ maxTokens, apiKey: cleanKey, modelId, signal });
+        }
+      }
+
+      return this.profileMarkdown;
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        console.warn("[Personalization] syncFromUserKnowledgeGraph error:", err);
+      }
+      return this.profileMarkdown;
+    }
+  }
+
+  /**
    * Recursively compacts user.md using Gemma until token count is <= maxTokens
    */
   async compactProfile({ maxTokens = 5000, apiKey, modelId = "gemma-4-31b-it", signal = null }) {

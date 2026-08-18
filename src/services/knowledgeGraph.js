@@ -32,7 +32,9 @@ export const PREDICATE_TYPES = {
 };
 
 export class KnowledgeGraphService {
-  constructor() {
+  constructor(storageKey = STORAGE_KEY, autoSeed = true) {
+    this.storageKey = storageKey;
+    this.autoSeed = autoSeed;
     this.entities = new Map(); // id -> EntityNode
     this.relations = []; // Array of SemanticTriple
     this.loadFromStorage();
@@ -771,10 +773,10 @@ Return ONLY a JSON object with this exact structure:
           entities: Array.from(this.entities.values()),
           relations: this.relations,
         };
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        window.localStorage.setItem(this.storageKey, JSON.stringify(data));
       }
     } catch (e) {
-      console.warn("[KnowledgeGraph] LocalStorage write error:", e);
+      console.warn(`[KnowledgeGraph] LocalStorage write error (${this.storageKey}):`, e);
     }
   }
 
@@ -784,7 +786,7 @@ Return ONLY a JSON object with this exact structure:
   loadFromStorage() {
     try {
       if (typeof window !== "undefined" && window.localStorage) {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
+        const raw = window.localStorage.getItem(this.storageKey);
         if (raw) {
           const data = JSON.parse(raw);
           if (Array.isArray(data.entities)) {
@@ -798,14 +800,16 @@ Return ONLY a JSON object with this exact structure:
         }
       }
     } catch (e) {
-      console.warn("[KnowledgeGraph] LocalStorage read error:", e);
+      console.warn(`[KnowledgeGraph] LocalStorage read error (${this.storageKey}):`, e);
     }
 
-    if (this.entities.size === 0) {
+    if (this.entities.size === 0 && this.autoSeed) {
       this.bootstrapDefaults();
     }
   }
 }
 
-// Global Singleton Instance
-export const knowledgeGraphInstance = new KnowledgeGraphService();
+// Global Singleton Instances
+export const knowledgeGraphInstance = new KnowledgeGraphService("chatgemma_knowledge_graph_v1", true);
+export const userKnowledgeGraphInstance = new KnowledgeGraphService("chatgemma_user_knowledge_graph_v1", false);
+

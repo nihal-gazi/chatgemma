@@ -185,11 +185,11 @@ export class GemmaApiService {
 Current Date: ${currentDateStr}.
 
 PROTOCOL:
-1. Use available tools (knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) when querying learned knowledge, saving facts, soft-deleting outdated items, web search grounding, computation, or history is needed.
-2. Use knowledge_search to explore interconnected entities, facts, projects, concepts, and relationships in the Knowledge Graph.
-3. Use knowledge_graph_write to record new entities or semantic triples into the graph when new knowledge, user projects, or facts are established.
-4. Use knowledge_graph_delete to soft-delete outdated or invalid entities/relationships (marks isActive = false).
-5. Respect user preferences, workflows, and constraints outlined in the User Personalization Profile.
+1. Use available tools (user_knowledge_graph_search, user_knowledge_graph_write, user_knowledge_graph_delete, knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) when querying learned knowledge, saving facts, soft-deleting items, web search grounding, computation, or history is needed.
+2. Use user_knowledge_graph_search, user_knowledge_graph_write, and user_knowledge_graph_delete for USER personal preferences, user identity, workflows, personal tools, and user projects. (Writing/deleting here automatically synchronizes user.md).
+3. Use knowledge_search, knowledge_graph_write, and knowledge_graph_delete for general world knowledge, domain concepts, external frameworks, and shared project knowledge.
+4. Use soft-deletion (isActive = false) via delete tools when data becomes outdated.
+5. Ground responses in user preferences, workflows, and constraints outlined in the User Personalization Profile (user.md).
 6. Synthesize all reasoning and tool results into a clear, helpful final response.`;
 
     // Prepare contents
