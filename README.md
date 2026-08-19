@@ -12,10 +12,9 @@ A modern, production-grade **React + Vite** web application for **ChatGemma** po
 - **Dynamic Tool Call Pills (`ToolCallPill.jsx`):** Collapsible pill badges showing tool inputs, execution status, and structured outputs for Google Search grounding, Python code execution, GraphRAG queries, and user memory operations.
 - **Floating Pill Prompt Bar (`PromptInputBar.jsx`):** Compact input bar with model selector, thinking preset switcher (`HIGH` vs `LOW`), attachment support, and voice trigger.
 
-### 2. Dual Knowledge Graph Architecture & CosmosGL Visualizer (GraphRAG)
+### 2. Dual Knowledge Graph Architecture (GraphRAG)
 - **General Knowledge Graph (`knowledgeGraphInstance`):** Persistent graph storing domain facts, entities, and directed semantic relationships with BFS multi-hop path traversal.
 - **User Knowledge Graph (`userKnowledgeGraphInstance`):** Dedicated graph storing **ONLY** user-specific preferences, identity facts, workflows, and projects.
-- **Interactive CosmosGL Visualizer (`GraphVisualizerModal.jsx`):** High-performance GPU-accelerated WebGL graph interface with 2D/3D space dimensions, real-time node search, category filtering, interactive zoom/fit, and a responsive node inspector drawer (optimized for desktop and mobile).
 - **Soft-Delete Invariant:** Nodes/triples are never permanently destroyed; `isActive` is set to `false`, preserving historical data without polluting active retrieval.
 
 ### 3. Continuous LLM Personalization (`user.md`)

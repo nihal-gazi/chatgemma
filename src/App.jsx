@@ -3,7 +3,7 @@ import Sidebar from "./components/Sidebar/Sidebar.jsx";
 import ChatArea from "./components/Chat/ChatArea.jsx";
 import SettingsModal from "./components/Modals/SettingsModal.jsx";
 import SearchModal from "./components/Modals/SearchModal.jsx";
-import GraphVisualizerModal from "./components/Modals/GraphVisualizerModal.jsx";
+import GraphVisualizer from "./components/Graph/GraphVisualizer.jsx";
 import { useChat } from "./context/ChatContext.jsx";
 import "./styles/App.css";
 
@@ -14,12 +14,6 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [graphVisualizerOpen, setGraphVisualizerOpen] = useState(false);
-  const [graphVisualizerMode, setGraphVisualizerMode] = useState("all");
-
-  const handleOpenGraphVisualizer = (mode = "all") => {
-    setGraphVisualizerMode(mode);
-    setGraphVisualizerOpen(true);
-  };
 
   // Global Drag & Drop for userdat.synapse file
   useEffect(() => {
@@ -48,7 +42,6 @@ export default function App() {
         onCloseMobile={() => setMobileSidebarOpen(false)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSearch={() => setSearchOpen(true)}
-        onOpenGraphVisualizer={handleOpenGraphVisualizer}
       />
 
       {/* Main Chat Interface */}
@@ -57,11 +50,11 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
-      {/* Modals */}
+      {/* Modals & Fullscreen Views */}
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onOpenGraphVisualizer={handleOpenGraphVisualizer}
+        onOpenGraphVisualizer={() => setGraphVisualizerOpen(true)}
       />
 
       <SearchModal
@@ -69,10 +62,9 @@ export default function App() {
         onClose={() => setSearchOpen(false)}
       />
 
-      <GraphVisualizerModal
+      <GraphVisualizer
         isOpen={graphVisualizerOpen}
         onClose={() => setGraphVisualizerOpen(false)}
-        initialMode={graphVisualizerMode}
       />
 
       {/* Toast Notification */}

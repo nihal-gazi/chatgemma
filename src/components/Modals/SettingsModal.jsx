@@ -13,7 +13,7 @@ import {
   RotateCcw,
   FileText,
   Sparkles,
-  Network,
+  Eye,
 } from "../Icons/index.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useChat } from "../../context/ChatContext.jsx";
@@ -329,17 +329,6 @@ export default function SettingsModal({ isOpen, onClose, onOpenGraphVisualizer }
                     <RotateCcw size={14} className={isCompactingProfile ? "spin" : ""} />
                     {isCompactingProfile ? "Compacting Profile..." : "Compact Now"}
                   </button>
-                  <button
-                    className="btn-modal-outline"
-                    onClick={() => {
-                      onClose();
-                      if (onOpenGraphVisualizer) onOpenGraphVisualizer("user");
-                    }}
-                    title="Open CosmosGL Interactive Visualizer for User Knowledge Graph"
-                  >
-                    <Network size={14} />
-                    <span>Visualize User Graph</span>
-                  </button>
                   <button className="btn-modal-danger-outline" onClick={handleResetUserMd}>
                     Reset
                   </button>
@@ -408,32 +397,28 @@ export default function SettingsModal({ isOpen, onClose, onOpenGraphVisualizer }
                   </div>
                 )}
 
-                <div className="kg-action-box" style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "16px" }}>
+                <div className="kg-action-box">
                   <button
                     className="btn-modal-action"
-                    onClick={() => {
-                      onClose();
-                      if (onOpenGraphVisualizer) onOpenGraphVisualizer("all");
-                    }}
                     style={{
-                      background: "linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)",
+                      background: "linear-gradient(135deg, #4285f4 0%, #9b72cb 100%)",
                       color: "#ffffff",
-                      fontWeight: "600",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       gap: "8px",
-                      padding: "12px 18px",
-                      borderRadius: "var(--radius-md)",
-                      boxShadow: "0 4px 16px rgba(99, 102, 241, 0.35)",
-                      cursor: "pointer",
-                      border: "none",
+                      padding: "10px 16px",
+                      fontWeight: "600",
+                      marginBottom: "6px",
+                    }}
+                    onClick={() => {
+                      handleClose();
+                      if (onOpenGraphVisualizer) onOpenGraphVisualizer();
                     }}
                   >
-                    <Network size={18} />
-                    <span>Visualize Graph (CosmosGL)</span>
+                    <Eye size={16} />
+                    Visualize Graph
                   </button>
-
                   <button
                     className="btn-modal-outline"
                     onClick={reindexKnowledgeGraph}

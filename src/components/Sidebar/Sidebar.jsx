@@ -9,7 +9,6 @@ export default function Sidebar({
   onCloseMobile,
   onOpenSettings,
   onOpenSearch,
-  onOpenGraphVisualizer,
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -32,10 +31,6 @@ export default function Sidebar({
           onOpenSearch={() => {
             if (isOpenMobile && onCloseMobile) onCloseMobile();
             onOpenSearch();
-          }}
-          onOpenGraphVisualizer={(mode) => {
-            if (isOpenMobile && onCloseMobile) onCloseMobile();
-            if (onOpenGraphVisualizer) onOpenGraphVisualizer(mode);
           }}
         />
 
