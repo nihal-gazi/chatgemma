@@ -1,4 +1,5 @@
 import { CONFIG } from "../config/config.js";
+import { fetchWithRateLimit } from "./api.js";
 
 const STORAGE_KEY = "chatgemma_knowledge_graph_v1";
 
@@ -505,12 +506,16 @@ Return ONLY a JSON object with this exact structure:
     };
 
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal,
-      });
+      const res = await fetchWithRateLimit(
+        endpoint,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal,
+        },
+        { model: rawModel, maxRetries: 4 }
+      );
 
       if (!res.ok) {
         console.warn(`[KnowledgeGraph] Background LLM extraction returned ${res.status}`);

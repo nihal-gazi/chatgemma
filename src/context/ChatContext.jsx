@@ -326,6 +326,12 @@ export function ChatProvider({ children }) {
               return [...prev, completedCall];
             });
           },
+          onRateLimitWait: ({ waitSeconds, attempt, maxRetries }) => {
+            showToast(
+              `API Rate Limit (429): Waiting ${waitSeconds}s for quota replenishment (Attempt ${attempt}/${maxRetries})...`,
+              "info"
+            );
+          },
           onComplete: ({ thought, answer, toolCalls, reasoningBlocks }) => {
             const assistantMsg = {
               id: Math.random().toString(36).substring(2, 10),

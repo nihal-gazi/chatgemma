@@ -1,12 +1,241 @@
 /**
  * API Service for Gemma / Gemini models with Native Google Search, Server-Side Code Execution,
- * Custom Function Calling Tools, and Comprehensive Browser Console Logging.
+ * Custom Function Calling Tools, Intelligent Rate Limiting with Auto-Pause/Resume, and Comprehensive Browser Console Logging.
  */
 
 import { CONFIG } from "../config/config.js";
 import { toolRegistry } from "../tools/index.js";
 
 const K_HISTORY_LIMIT = 100;
+
+/**
+ * Modular API Rate Limiter & Call History Recorder
+ * Tracks calls per minute, maintains rolling call history, and automatically handles
+ * 429 / 503 quota exhaustion with intelligent pause / resume extracted from the error message.
+ */
+export class ApiRateLimiter {
+  constructor() {
+    this.callHistory = []; // Rolling log of { timestamp, endpoint, model }
+    this.cooldownUntil = 0; // Epoch timestamp in ms
+    this.minCallSpacingMs = 800; // Minimum pause between consecutive requests to prevent micro-bursts
+    this.lastCallTime = 0;
+  }
+
+  /**
+   * Records an API call in the history window.
+   */
+  recordCall(endpoint = "", model = "") {
+    const now = Date.now();
+    this.lastCallTime = now;
+    this.callHistory.push({ timestamp: now, endpoint, model });
+
+    // Prune entries older than 5 minutes
+    const fiveMinAgo = now - 5 * 60 * 1000;
+    this.callHistory = this.callHistory.filter((c) => c.timestamp >= fiveMinAgo);
+  }
+
+  /**
+   * Returns current rate limit statistics and call counts.
+   */
+  getStats() {
+    const now = Date.now();
+    const oneMinAgo = now - 60 * 1000;
+    const callsLastMinute = this.callHistory.filter((c) => c.timestamp >= oneMinAgo).length;
+    const cooldownRemaining = Math.max(0, this.cooldownUntil - now);
+
+    return {
+      totalCallsLogged: this.callHistory.length,
+      callsLastMinute,
+      cooldownRemainingMs: cooldownRemaining,
+      isCoolingDown: cooldownRemaining > 0,
+      lastCallTime: this.lastCallTime,
+    };
+  }
+
+  /**
+   * Sets a global cooldown period until a future timestamp.
+   */
+  setCooldown(waitMs) {
+    this.cooldownUntil = Math.max(this.cooldownUntil, Date.now() + waitMs);
+  }
+
+  /**
+   * Extracts wait duration in milliseconds from 429 error messages or response headers.
+   * Matches "Please retry in 17.343236122s", "retry after 15s", "in 12 seconds", etc.
+   */
+  parseRetryAfterMs(errorMessage = "", responseHeaders = null) {
+    if (responseHeaders?.get) {
+      const headerVal = responseHeaders.get("retry-after");
+      if (headerVal) {
+        const parsedSec = parseFloat(headerVal);
+        if (!isNaN(parsedSec) && parsedSec > 0) {
+          return Math.ceil(parsedSec * 1000) + 600;
+        }
+      }
+    }
+
+    if (typeof errorMessage === "string") {
+      const match =
+        errorMessage.match(/retry\s+(?:in|after)\s+([0-9.]+)\s*s/i) ||
+        errorMessage.match(/in\s+([0-9.]+)\s*(?:s|seconds)/i) ||
+        errorMessage.match(/wait\s+([0-9.]+)\s*(?:s|seconds)/i);
+
+      if (match && match[1]) {
+        const sec = parseFloat(match[1]);
+        if (!isNaN(sec) && sec > 0) {
+          return Math.ceil(sec * 1000) + 600; // 600ms safety buffer
+        }
+      }
+    }
+
+    // Default fallback wait time for 429 (10s)
+    return 10000;
+  }
+
+  /**
+   * Ensures respectful pacing before initiating a new request.
+   * If a cooldown is active or calls are bursting, waits asynchronously.
+   */
+  async waitBeforeRequest(signal = null) {
+    const now = Date.now();
+
+    // 1. Check active rate-limit cooldown
+    if (this.cooldownUntil > now) {
+      const waitMs = this.cooldownUntil - now;
+      console.log(
+        `%c[ChatGemma][RateLimit] Active cooldown active. Pausing ${(waitMs / 1000).toFixed(1)}s before next call...`,
+        "color: #f59e0b; font-weight: bold;"
+      );
+      await this._sleep(waitMs, signal);
+    }
+
+    // 2. Enforce minimum call spacing to avoid micro-burst 429s
+    const timeSinceLast = Date.now() - this.lastCallTime;
+    if (timeSinceLast < this.minCallSpacingMs) {
+      const spacingWait = this.minCallSpacingMs - timeSinceLast;
+      await this._sleep(spacingWait, signal);
+    }
+  }
+
+  /**
+   * Helper sleep that respects AbortSignal.
+   */
+  _sleep(ms, signal = null) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        const err = new Error("Generation aborted during rate limit wait.");
+        err.name = "AbortError";
+        return reject(err);
+      }
+
+      const timer = setTimeout(() => {
+        if (signal) signal.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+
+      const onAbort = () => {
+        clearTimeout(timer);
+        if (signal) signal.removeEventListener("abort", onAbort);
+        const err = new Error("Generation aborted during rate limit wait.");
+        err.name = "AbortError";
+        reject(err);
+      };
+
+      if (signal) {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    });
+  }
+}
+
+export const apiRateLimiter = new ApiRateLimiter();
+
+/**
+ * Robust fetch wrapper that tracks API calls, enforces pacing, and automatically
+ * handles 429 / 503 rate limit errors by waiting the requested time and retrying.
+ */
+export async function fetchWithRateLimit(
+  url,
+  options = {},
+  { maxRetries = 4, onRateLimitWait = null, model = "" } = {}
+) {
+  let attempt = 0;
+  const signal = options.signal;
+
+  while (true) {
+    attempt++;
+
+    // 1. Wait for any active cooldown or spacing
+    await apiRateLimiter.waitBeforeRequest(signal);
+
+    // 2. Record this call
+    apiRateLimiter.recordCall(url, model);
+
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch (err) {
+      if (err.name === "AbortError") {
+        throw err;
+      }
+      if (attempt <= maxRetries) {
+        const backoffMs = Math.min(attempt * 2000, 10000);
+        console.warn(
+          `%c[ChatGemma][Network] Fetch failed (${err.message}). Retrying in ${backoffMs}ms (Attempt ${attempt}/${maxRetries})...`,
+          "color: #f59e0b;"
+        );
+        await apiRateLimiter._sleep(backoffMs, signal);
+        continue;
+      }
+      throw err;
+    }
+
+    // 3. Handle 429 / 503 Quota & Rate Limit errors
+    if (response.status === 429 || response.status === 503) {
+      let errorDetail = "";
+      try {
+        const cloned = response.clone();
+        const errorJson = await cloned.json();
+        errorDetail = errorJson.error?.message || response.statusText;
+      } catch {
+        try {
+          const cloned = response.clone();
+          errorDetail = await cloned.text();
+        } catch {
+          errorDetail = response.statusText;
+        }
+      }
+
+      if (attempt <= maxRetries) {
+        const waitMs = apiRateLimiter.parseRetryAfterMs(errorDetail, response.headers);
+        const waitSec = (waitMs / 1000).toFixed(1);
+
+        apiRateLimiter.setCooldown(waitMs);
+
+        console.warn(
+          `%c[ChatGemma][RateLimit ${response.status}] Quota limit hit: "${errorDetail}". Pausing for ${waitSec}s before retrying (Attempt ${attempt}/${maxRetries})...`,
+          "color: #f59e0b; font-weight: bold;"
+        );
+
+        if (typeof onRateLimitWait === "function") {
+          onRateLimitWait({
+            status: response.status,
+            errorDetail,
+            waitMs,
+            waitSeconds: Math.ceil(waitMs / 1000),
+            attempt,
+            maxRetries,
+          });
+        }
+
+        await apiRateLimiter._sleep(waitMs, signal);
+        continue;
+      }
+    }
+
+    return response;
+  }
+}
 
 export class GemmaApiService {
   constructor(apiKey, modelId, systemPrompt) {
@@ -114,15 +343,24 @@ export class GemmaApiService {
 
   /**
    * Stream generate content with native Code Execution, Google Search Grounding,
-   * custom Function Calling, and full console logging.
+   * custom Function Calling, automatic 429 pause/resume rate limiting, and full console logging.
    *
    * @param {Array} messages - Chat message history
-   * @param {Object} callbacks - { onThought, onAnswer, onToolCallStart, onToolCallResult, onReasoningBlocksUpdate, onComplete, onError }
+   * @param {Object} callbacks - { onThought, onAnswer, onToolCallStart, onToolCallResult, onReasoningBlocksUpdate, onComplete, onError, onRateLimitWait }
    * @param {Object} executionContext - Context passed to custom tools (e.g. sessions, activeSession)
    */
   async streamChat(
     messages,
-    { onThought, onAnswer, onToolCallStart, onToolCallResult, onReasoningBlocksUpdate, onComplete, onError },
+    {
+      onThought,
+      onAnswer,
+      onToolCallStart,
+      onToolCallResult,
+      onReasoningBlocksUpdate,
+      onComplete,
+      onError,
+      onRateLimitWait,
+    },
     executionContext = {}
   ) {
     this.cancelRequest();
@@ -244,15 +482,23 @@ PROTOCOL:
 
         let response;
         try {
-          response = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-goog-api-key": cleanKey,
+          response = await fetchWithRateLimit(
+            endpoint,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": cleanKey,
+              },
+              body: JSON.stringify(payload),
+              signal: this.abortController.signal,
             },
-            body: JSON.stringify(payload),
-            signal: this.abortController.signal,
-          });
+            {
+              maxRetries: 4,
+              model: rawModelName,
+              onRateLimitWait,
+            }
+          );
         } catch (err) {
           if (err.name === "AbortError") {
             console.log("%c[ChatGemma] Generation Aborted.", "color: #f87171;");
@@ -457,7 +703,7 @@ PROTOCOL:
                     if (onReasoningBlocksUpdate) onReasoningBlocksUpdate([...reasoningBlocks]);
                   }
 
-                  // 4. Custom Function / Tool Calls (e.g. grep)
+                  // 4. Custom Function / Tool Calls (e.g. grep, knowledge_search, user_knowledge_graph_*)
                   if (part.functionCall) {
                     if (currentThoughtBlock) {
                       currentThoughtBlock.isLive = false;

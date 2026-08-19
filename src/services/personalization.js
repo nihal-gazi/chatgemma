@@ -6,6 +6,7 @@
  */
 
 import { CONFIG } from "../config/config.js";
+import { fetchWithRateLimit } from "./api.js";
 
 const STORAGE_KEY = "chatgemma_user_md_v1";
 
@@ -108,12 +109,16 @@ Return ONLY the updated user.md markdown text:`;
     };
 
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal,
-      });
+      const res = await fetchWithRateLimit(
+        endpoint,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal,
+        },
+        { model: rawModel, maxRetries: 4 }
+      );
 
       if (!res.ok) {
         console.warn(`[Personalization] API returned ${res.status}`);
@@ -212,12 +217,16 @@ Return ONLY the updated user.md markdown text:`;
     };
 
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal,
-      });
+      const res = await fetchWithRateLimit(
+        endpoint,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal,
+        },
+        { model: rawModel, maxRetries: 4 }
+      );
 
       if (!res.ok) {
         console.warn(`[Personalization] syncFromUserKnowledgeGraph API returned ${res.status}`);
@@ -294,12 +303,16 @@ Return ONLY the compacted user.md markdown text:`;
       };
 
       try {
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal,
-        });
+        const res = await fetchWithRateLimit(
+          endpoint,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal,
+          },
+          { model: rawModel, maxRetries: 4 }
+        );
 
         if (!res.ok) break;
 
