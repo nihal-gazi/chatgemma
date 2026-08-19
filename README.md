@@ -1,102 +1,125 @@
 # ChatGemma Web Interface (React + Vite)
 
-A modern, modular **React + Vite** web application for **ChatGemma** featuring Google's Gemini dark theme UI, Google Firebase authentication, thinking level configuration (`HIGH` vs `LOW`), and persistent `userdat.synapse` state storage.
+A modern, production-grade **React + Vite** web application for **ChatGemma** powered by Google's Gemma 4 models (`gemma-4-31b-it`, `gemma-4-26b-a4b-it`). It features Gemini ambient dark mode, real-time thought stream separation, dual GraphRAG Knowledge Graphs, automatic LLM personalization (`user.md`), modular tool execution, intelligent rate limiting, and `userdat.synapse` state portability.
 
 ---
 
-## Key Features
+## 🚀 Key Features
 
-1. **Gemini Dark Theme UI Layout:**
-   - Left Sidebar with Sparkle logo, "+ New chat", "Search chats", "Recents" session list, and Google user profile card.
-   - Ambient glow empty state (`Let's jump in, {name}`).
-   - Rounded user chat bubbles and clean full-width assistant response stream.
-   - Collapsible **Thought Process** panel separating model reasoning tokens from the final answer in real-time.
-   - Floating pill input bar with model selector, mic icon, attachment trigger, and send button.
+### 1. Gemini Dark Theme Interface
+- **Ambient Glow Empty State:** Welcoming hero state with quick prompt suggestions and subtle animated glows.
+- **Thought Process Accordion (`ThinkingBlock.jsx`):** Collapsible panel displaying model reasoning tokens and internal thought steps in real-time, isolated from final answers.
+- **Dynamic Tool Call Pills (`ToolCallPill.jsx`):** Collapsible pill badges showing tool inputs, execution status, and structured outputs for Google Search grounding, Python code execution, GraphRAG queries, and user memory operations.
+- **Floating Pill Prompt Bar (`PromptInputBar.jsx`):** Compact input bar with model selector, thinking preset switcher (`HIGH` vs `LOW`), attachment support, and voice trigger.
 
-2. **Reasoning & Thinking Modes:**
-   - `gemma-4-31b-it (HIGH)`: Configured with `thinkingLevel: "HIGH"` for deep multi-step reasoning.
-   - `gemma-4-31b-it (LOW)`: Configured with `thinkingLevel: "MINIMAL"` for fast, low-overhead generation.
-   - Support for 26B MoE models (`gemma-4-26b-a4b-it`).
+### 2. Dual Knowledge Graph Architecture (GraphRAG)
+- **General Knowledge Graph (`knowledgeGraphInstance`):** Persistent graph storing domain facts, entities, and directed semantic relationships with BFS multi-hop path traversal.
+- **User Knowledge Graph (`userKnowledgeGraphInstance`):** Dedicated graph storing **ONLY** user-specific preferences, identity facts, workflows, and projects.
+- **Soft-Delete Invariant:** Nodes/triples are never permanently destroyed; `isActive` is set to `false`, preserving historical data without polluting active retrieval.
 
-3. **Google Authentication & Cloud Sync:**
-   - One-click Google sign-in powered by Firebase Auth.
-   - Profile settings to customize display names.
-   - Cloud backup toggle ("Save data to cloud") syncing chat history across devices via Firestore.
+### 3. Continuous LLM Personalization (`user.md`)
+- Maintains an internal user profile (`user.md`) injected into every model prompt.
+- **Auto-Sync:** Modifying the User Knowledge Graph immediately triggers Gemma 31B to distill active user facts into `user.md`.
+- **Recursive Token Compaction:** Automatically compacts `user.md` using Gemma when the profile exceeds the configurable token limit (default: 5,000 tokens).
 
-4. **Persistent `userdat.synapse` Storage:**
-   - **Save:** Export complete chat sessions, history, and settings to any folder as `userdat.synapse`.
-   - **Load:** Restore previous sessions via file picker or drag-and-drop.
-   - **Browser Memory:** Automatically caches state in local storage so chats persist across page refreshes.
+### 4. Modular Function Calling Tools
+- **`user_knowledge_graph_search`**: Search user preferences, background, and workflows.
+- **`user_knowledge_graph_write`**: Record user entities and relationships (auto-syncs `user.md`).
+- **`user_knowledge_graph_delete`**: Soft-delete user entities and relationships (auto-syncs `user.md`).
+- **`knowledge_search`**: Multi-hop GraphRAG search across general knowledge.
+- **`knowledge_graph_write` / `knowledge_graph_delete`**: Write or soft-delete general knowledge items.
+- **`grep`**: Regex pattern search over conversation history.
+- **Native Grounding & Code Execution**: Google Search and Python code execution.
 
-5. **Message Editing & Regeneration:**
-   - Inline message editing on user prompts with immediate response re-generation.
+### 5. Intelligent API Rate Limiter (`ApiRateLimiter`)
+- **Call History Logging:** Rolling call history tracking requests per minute.
+- **Automatic 429 Pause & Resume:** Automatically extracts exact retry durations from API error messages (e.g., `Please retry in 17.34s`), enters an abortable cooldown pause, and automatically resumes generation.
+- **Micro-Burst Spacing:** Enforces minimum spacing ($800\text{ms}$) between consecutive calls.
+
+### 6. State Persistence & Cloud Sync
+- **`userdat.synapse` Export & Import:** Exports complete application state (all chat sessions, settings, general knowledge graph, user knowledge graph, and `user.md`) into a single file.
+- **Google Firebase Auth & Firestore:** Optional cloud synchronization across devices.
+- **LocalStorage Backup:** Caches state locally in browser storage for instant reload.
 
 ---
 
-## Modular Directory Structure
+## 🛠️ Project Structure
 
 ```
 chatgemma_web/
-├── index.html                  # HTML entry point with Google Sans fonts
-├── package.json                # React, Vite, Firebase, Lucide, Marked
-├── vite.config.js              # Vite configuration
+├── index.html                      # HTML entry point with Google Sans fonts
+├── package.json                    # Node dependencies
+├── vite.config.js                  # Vite configuration
 ├── public/
-│   └── favicon.svg             # Gemini sparkle logo
+│   └── favicon.svg                 # Gemini sparkle logo
 └── src/
-    ├── main.jsx                # Application root mounting
-    ├── App.jsx                 # Main layout & modal controller
+    ├── main.jsx                    # Root React mounting
+    ├── App.jsx                     # Top-level layout and modal coordinator
     ├── config/
-    │   ├── config.js           # Default API key, model options, thinking levels
-    │   └── firebase.js         # Firebase Auth, Google provider, Firestore
+    │   ├── config.js               # Model options, endpoints, and resolveModelName helper
+    │   └── firebase.js             # Firebase initialization & Firestore provider
     ├── context/
-    │   ├── AuthContext.jsx     # Google auth & profile state
-    │   └── ChatContext.jsx     # Multi-session state, streaming, message CRUD
+    │   ├── AuthContext.jsx         # Authentication & user profile state
+    │   └── ChatContext.jsx         # Multi-session state, streaming orchestrator, and storage
     ├── services/
-    │   ├── api.js              # Google GenAI REST API connector with thought stream separation
-    │   ├── storage.js          # 'userdat.synapse' export/import & localStorage caching
-    │   └── firestore.js        # Firestore cloud sync
+    │   ├── api.js                  # GemmaApiService, ApiRateLimiter, fetchWithRateLimit
+    │   ├── knowledgeGraph.js       # KnowledgeGraphService (general and user KG singletons)
+    │   ├── personalization.js      # PersonalizationService (user.md & recursive compaction)
+    │   ├── storage.js              # SynapseStorageService (userdat.synapse export/import)
+    │   └── firestore.js            # Firestore cloud sync service
+    ├── tools/
+    │   ├── README.md               # Tool system architecture and creation guide
+    │   ├── index.js                # Tool registry entry point
+    │   ├── registry.js             # ToolRegistry class
+    │   └── implementations/        # Tool implementations
+    │       ├── grep.js
+    │       ├── knowledge_search.js
+    │       ├── knowledge_graph_write.js
+    │       ├── knowledge_graph_delete.js
+    │       ├── user_knowledge_graph_search.js
+    │       ├── user_knowledge_graph_write.js
+    │       └── user_knowledge_graph_delete.js
     ├── components/
-    │   ├── Sidebar/
-    │   │   ├── Sidebar.jsx
-    │   │   ├── BrandHeader.jsx
-    │   │   ├── ModeSwitcher.jsx  # "Chat" and "Spark (BETA)"
-    │   │   ├── NavigationItems.jsx # "New chat", "Search chats"
-    │   │   ├── RecentsList.jsx
-    │   │   └── UserProfile.jsx   # User profile, Google avatar, Settings trigger
-    │   ├── Chat/
-    │   │   ├── ChatArea.jsx
-    │   │   ├── EmptyState.jsx    # "Let's jump in, {name}" & ambient glow
-    │   │   ├── MessageList.jsx
-    │   │   ├── MessageItem.jsx
-    │   │   ├── ThinkingBlock.jsx # Collapsible reasoning accordion
-    │   │   ├── ThinkingAnimation.jsx # Custom geometric thinking animation
-    │   │   ├── MarkdownRenderer.jsx # Code highlighting with copy button
-    │   │   └── MessageActions.jsx # Thumbs up/down, Copy, Retry
-    │   ├── Input/
-    │   │   ├── PromptInputBar.jsx # Floating pill input
-    │   │   └── ModelSelector.jsx # Model & reasoning dropdown
-    │   └── Modals/
-    │       ├── SettingsModal.jsx  # Profile name, Cloud sync, API key
-    │       ├── SearchModal.jsx    # Filter chats & messages
-    │       └── EditMessageModal.jsx # Prompt revision & regeneration
+    │   ├── Sidebar/                # BrandHeader, RecentsList, UserProfile, NavigationItems
+    │   ├── Chat/                   # ChatArea, EmptyState, MessageList, ThinkingBlock, ToolCallPill
+    │   ├── Input/                  # PromptInputBar, ModelSelector
+    │   ├── Modals/                 # SettingsModal, SearchModal, EditMessageModal
+    │   └── Icons/                  # Lucide icon wrappers
     └── styles/
-        ├── index.css           # Gemini design tokens & reset
-        └── App.css             # Component styling, responsive layout, modals
+        ├── index.css               # Design tokens, themes, and CSS variables
+        └── App.css                 # Component styles, animations, and modal layouts
 ```
 
 ---
 
-## Running the App
+## 🚀 Getting Started
 
+### 1. Install Dependencies
 ```bash
-cd chatgemma_web
-
-# 1. Install dependencies (if not already installed)
 npm install
+```
 
-# 2. Start Vite development server
+### 2. Configure Environment (Optional)
+You can optionally create a `.env` file in `chatgemma_web/`:
+```env
+VITE_GEMINI_API_KEY=your_gemini_api_key_here
+```
+*(Alternatively, enter your API key directly in the web UI under **Settings $\rightarrow$ API & Model**).*
+
+### 3. Start Development Server
+```bash
 npm run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-# 3. Build production bundle
+### 4. Build for Production
+```bash
 npm run build
 ```
+The compiled production bundle will be generated in `dist/`.
+
+---
+
+## 📄 License
+
+MIT License. See the main repository LICENSE file for details.

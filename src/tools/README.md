@@ -1,50 +1,67 @@
 # ChatGemma Modular Tool System
 
-Welcome to the ChatGemma Tool System. This architecture makes adding, customizing, or removing AI tools simple, fully modular, and open-source friendly.
+Welcome to the **ChatGemma Tool System**. This architecture makes creating, registering, executing, and visualizing custom AI tools completely modular, declarative, and developer-friendly.
 
 ---
 
-## Core Custom Tools
+## 🛠️ Core Built-In Tools
 
-1. **`knowledge_search`**: Searches the GraphRAG Knowledge Graph for interconnected entities, directed semantic triples, and multi-hop reasoning paths.
-2. **`knowledge_graph_write`**: Creates, updates, or reinforces factual entities and directed semantic relationships (triples) into the persistent Knowledge Graph.
-3. **`knowledge_graph_delete`**: Soft-deletes entities or relationships from active retrieval (`isActive = false`), preserving data without permanent deletion.
-4. **`user_knowledge_graph_search`**: Searches the dedicated User Knowledge Graph for personal preferences, workflows, background, tools, and projects.
-5. **`user_knowledge_graph_write`**: Ingests personal user facts/triples and automatically syncs `user.md` via Background LLM.
-6. **`user_knowledge_graph_delete`**: Soft-deletes personal user facts/triples (`isActive = false`) and automatically syncs `user.md` via Background LLM.
-7. **`grep`**: Regex and pattern search across conversation history.
+| Tool Name | Display Name | Purpose |
+| :--- | :--- | :--- |
+| **`user_knowledge_graph_search`** | User KG Search | Searches dedicated User Knowledge Graph for personal facts, preferences, background, and workflows. |
+| **`user_knowledge_graph_write`** | User KG Write | Ingests user-specific entities and directed semantic triples; automatically syncs `user.md` via background LLM. |
+| **`user_knowledge_graph_delete`** | User KG Delete | Soft-deletes user facts (`isActive = false`) and automatically syncs `user.md` via background LLM. |
+| **`knowledge_search`** | Knowledge Search | Performs multi-hop GraphRAG search over the general knowledge graph with Schema.org type and predicate filtering. |
+| **`knowledge_graph_write`** | Knowledge Graph Write | Writes or updates general factual entities and directed semantic relationships. |
+| **`knowledge_graph_delete`** | Knowledge Graph Delete | Soft-deletes general factual entities and relationships (`isActive = false`). |
+| **`grep`** | History Grep | Executes regex and pattern matching across conversation message history. |
 
 ---
 
-## Adding a New Tool in 3 Steps
+## 🚀 Adding a Custom Tool in 3 Steps
 
 ### Step 1: Create your tool in `src/tools/implementations/my_tool.js`
 
 ```javascript
 export const myTool = {
-  name: "my_tool",                        // Unique name called by Gemini
-  displayName: "My Custom Tool",          // Display title for UI pill
-  iconName: "Sparkles",                   // Icon: Globe, Terminal, Code, FileSearch, Share2, Sparkles
-  description: "Describe what your tool does so the AI knows when to use it.",
+  name: "my_custom_tool",               // Unique name invoked by the model
+  displayName: "My Custom Tool",         // Label rendered on the UI pill badge
+  iconName: "Sparkles",                  // Icon: Globe, Terminal, Code, FileSearch, Share2, FileText, Sparkles
+  description: "Detailed description guiding the AI on when and how to invoke this tool.",
   parameters: {
     type: "OBJECT",
     properties: {
-      inputParam: {
+      query: {
         type: "STRING",
-        description: "Description of the input parameter.",
+        description: "The search query or input argument.",
+      },
+      count: {
+        type: "INTEGER",
+        description: "Optional number of results to return (default: 5).",
       },
     },
-    required: ["inputParam"],
+    required: ["query"],
   },
-  renderSummary: (args) => `MyTool: ${args.inputParam || ""}`,
+  renderSummary: (args) => `MyTool: "${args.query || ""}"`,
 
-  async execute(args, context) {
-    // Perform your logic (fetch APIs, browser actions, data math)
-    const result = `Processed: ${args.inputParam}`;
-    
+  async execute(args, context = {}) {
+    // Access application context (activeSession, sessions, knowledgeGraph, userKnowledgeGraph, settings)
+    const query = args.query || "";
+    const count = args.count || 5;
+
+    // Check permission if applicable
+    if (context?.settings?.allowKnowledgeGraphReadWrite === false) {
+      return { success: false, error: "Permission denied in Settings." };
+    }
+
+    // Perform tool logic
+    const results = [`Result 1 for ${query}`, `Result 2 for ${query}`].slice(0, count);
+
     return {
       success: true,
-      output: result,
+      query,
+      results,
+      count: results.length,
     };
   },
 };
@@ -53,13 +70,42 @@ export const myTool = {
 ### Step 2: Register it in `src/tools/index.js`
 
 ```javascript
+import { toolRegistry } from "./registry.js";
 import { myTool } from "./implementations/my_tool.js";
 
+// Register tool
 toolRegistry.register(myTool);
+
+export { myTool };
 ```
 
-### Step 3: Registration Complete
-The tool will automatically be:
-- Declared in Google GenAI API function calls schema (`tools: [{ functionDeclarations }]`).
-- Executed when Gemini calls it during a chat session.
-- Rendered in a collapsible Thoughtbox-style pill in the UI showing the query and response.
+### Step 3: Done!
+The tool is now automatically:
+1. Converted to Google GenAI OpenAPI Function Declaration schema (`tools: [{ functionDeclarations }]`).
+2. Passed to Gemma during chat sessions.
+3. Automatically executed when the model generates a function call.
+4. Rendered in real-time as a collapsible thoughtbox pill badge with structured results in the UI.
+
+---
+
+## 🧩 Execution Context
+
+Every tool `execute(args, context)` receives the current runtime context:
+
+```javascript
+{
+  activeSession,               // Currently active chat session object
+  sessions,                    // Array of all user chat sessions
+  knowledgeGraph,              // General KnowledgeGraphService singleton
+  userKnowledgeGraph,          // User KnowledgeGraphService singleton
+  personalization,             // PersonalizationService singleton (user.md)
+  userProfileMarkdown,         // Active user.md text
+  settings,                    // App settings (apiKey, modelId, allowKnowledgeGraphReadWrite, etc.)
+}
+```
+
+---
+
+## 📄 License
+
+MIT License. See the main repository LICENSE file for details.
