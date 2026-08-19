@@ -1,8 +1,8 @@
 import React from "react";
-import { SquarePen, Search } from "../Icons/index.jsx";
+import { SquarePen, Search, Network } from "../Icons/index.jsx";
 import { useChat } from "../../context/ChatContext.jsx";
 
-export default function NavigationItems({ collapsed, onOpenSearch }) {
+export default function NavigationItems({ collapsed, onOpenSearch, onOpenGraphVisualizer }) {
   const { createNewSession } = useChat();
 
   return (
@@ -24,6 +24,18 @@ export default function NavigationItems({ collapsed, onOpenSearch }) {
         <Search size={18} className="nav-icon" />
         {!collapsed && <span>Search chats</span>}
       </button>
+
+      {onOpenGraphVisualizer && (
+        <button
+          className="nav-btn kg-visualize-nav-btn"
+          onClick={() => onOpenGraphVisualizer("all")}
+          title="Visualize Knowledge Graph (CosmosGL)"
+        >
+          <Network size={18} className="nav-icon" />
+          {!collapsed && <span>Knowledge Graph</span>}
+        </button>
+      )}
     </div>
   );
 }
+

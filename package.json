@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cosmograph/cosmos": "^3.4.1",
     "firebase": "^11.3.1",
     "highlight.js": "^11.11.1",
     "katex": "^0.18.4",
