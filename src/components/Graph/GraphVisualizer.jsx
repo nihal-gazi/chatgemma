@@ -68,8 +68,23 @@ export default function GraphVisualizer({ isOpen, onClose }) {
       }
     }
 
+    // Deduplicate relations by ID or composite key
+    const relationMap = new Map();
+    for (const rel of [...generalRelations, ...userRelations]) {
+      const compositeKey = rel.id || `rel_${rel.sourceId}_${rel.predicate}_${rel.targetId}`;
+      if (!relationMap.has(compositeKey)) {
+        relationMap.set(compositeKey, { ...rel, id: compositeKey });
+      } else {
+        // Keep active version if duplicate exists
+        const existing = relationMap.get(compositeKey);
+        if (rel.isActive && !existing.isActive) {
+          relationMap.set(compositeKey, { ...rel, id: compositeKey });
+        }
+      }
+    }
+
     let entities = Array.from(entityMap.values());
-    let relations = [...generalRelations, ...userRelations];
+    let relations = Array.from(relationMap.values());
 
     // Filter by source if selected
     if (filterSource === "user") {
@@ -496,9 +511,9 @@ export default function GraphVisualizer({ isOpen, onClose }) {
               <div className="graph-relations-section">
                 <div className="graph-relations-title">Outgoing Relations</div>
                 <div className="graph-relations-list">
-                  {selectedNodeRelations.outgoing.map((rel) => (
+                  {selectedNodeRelations.outgoing.map((rel, idx) => (
                     <div
-                      key={rel.id}
+                      key={`out_${rel.id || rel.predicate}_${rel.targetId}_${idx}`}
                       className="graph-relation-item"
                       onClick={() => handleSelectNeighbor(rel.targetId)}
                       title={`Jump to ${rel.targetName}`}
@@ -517,9 +532,9 @@ export default function GraphVisualizer({ isOpen, onClose }) {
               <div className="graph-relations-section">
                 <div className="graph-relations-title">Incoming Relations</div>
                 <div className="graph-relations-list">
-                  {selectedNodeRelations.incoming.map((rel) => (
+                  {selectedNodeRelations.incoming.map((rel, idx) => (
                     <div
-                      key={rel.id}
+                      key={`in_${rel.id || rel.predicate}_${rel.sourceId}_${idx}`}
                       className="graph-relation-item"
                       onClick={() => handleSelectNeighbor(rel.sourceId)}
                       title={`Jump to ${rel.sourceName}`}
