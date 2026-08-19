@@ -174,18 +174,28 @@ Return ONLY the updated user.md markdown text:`;
     const activeEntities = Array.from(userKnowledgeGraph.entities.values()).filter((e) => e.isActive !== false);
     const activeRelations = (userKnowledgeGraph.relations || []).filter((r) => r.isActive !== false);
 
-    const entitiesSummary =
-      activeEntities.length > 0
-        ? activeEntities.map((e) => `• [${e.name}] (${(e.types || []).join(", ")}): ${e.description}`).join("\n")
-        : "No active user entities.";
+    // If no active entities exist, reset user.md to standard clean template
+    if (activeEntities.length === 0) {
+      this.profileMarkdown = DEFAULT_USER_MD;
+      this.saveToStorage();
+      return this.profileMarkdown;
+    }
+
+    const entitiesSummary = activeEntities
+      .map((e) => `• [${e.name}] (${(e.types || []).join(", ")}): ${e.description}`)
+      .join("\n");
 
     const relationsSummary =
       activeRelations.length > 0
-        ? activeRelations.map((r) => `• ${r.sourceName} --[${r.predicate}]--> ${r.targetName}: "${r.description}"`).join("\n")
+        ? activeRelations
+            .map((r) => `• ${r.sourceName} --[${r.predicate}]--> ${r.targetName}: "${r.description}"`)
+            .join("\n")
         : "No active user relations.";
 
-    const prompt = `You are the Personalization Synchronization Engine for ChatGemma.
+    const prompt = `You are the Personalization Generator Engine for ChatGemma.
 The User Knowledge Graph has just been modified (${modificationSummary || "graph update"}).
+
+Task: Generate the entire user.md profile COMPLETELY FROM SCRATCH using ONLY the active entities, attributes, and semantic triples currently present in the User Knowledge Graph.
 
 Active User Knowledge Graph Entities (${activeEntities.length}):
 ${entitiesSummary}
@@ -193,16 +203,18 @@ ${entitiesSummary}
 Active User Knowledge Graph Relations & Triples (${activeRelations.length}):
 ${relationsSummary}
 
-Current user.md Profile:
-"""
-${this.profileMarkdown}
-"""
+Instructions:
+1. Re-make and synthesize a comprehensive, clean, and well-structured user.md document entirely from scratch.
+2. Structure into standard Markdown sections:
+   # User Profile (user.md)
+   ## Identity & Background (Name, role, organization, location, bio)
+   ## Technical Stack & Skills (Languages, frameworks, tools, models, OS/hardware)
+   ## Key Projects & Research (Current projects, repositories, research topics)
+   ## Preferences & Workflows (Coding style, tool usage, communication preferences, constraints)
+3. Rely EXCLUSIVELY on the active entities and relations provided above. Do NOT include, retain, or invent any deleted, inactive, or unlisted facts.
+4. Format cleanly using bullet points and concise descriptions.
 
-Task: Update the user.md markdown profile to accurately, concisely, and comprehensively reflect all active user facts, preferences, background, projects, and relationships.
-If any fact or entity was soft-deleted or removed from the active graph, ensure it is removed or reconciled in user.md.
-Maintain clean markdown sections (e.g. ## Identity & Background, ## Preferences & Workflows, ## Key Projects & Technologies).
-
-Return ONLY the updated user.md markdown text:`;
+Return ONLY the complete user.md markdown text:`;
 
     const rawModel = CONFIG.resolveModelName(modelId);
     const endpoint = `${CONFIG.apiBaseUrl}/${rawModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
