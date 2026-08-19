@@ -142,16 +142,17 @@ export default function GraphVisualizer({ isOpen, onClose }) {
     const pointColors = new Float32Array(numPoints * 4);
     const pointSizes = new Float32Array(numPoints);
 
-    // Initial radial / random layout around center (2048, 2048)
+    // Initial deterministic sunflower spiral layout (Fermat spiral with golden angle)
+    // Prevents node collisions and explosive initial forces
     const centerX = 2048;
     const centerY = 2048;
-    const radius = Math.min(800, 100 + numPoints * 25);
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees
 
     entities.forEach((entity, i) => {
-      const angle = (i / numPoints) * 2 * Math.PI;
-      const r = radius * (0.4 + 0.6 * Math.random());
-      pointPositions[i * 2] = centerX + Math.cos(angle) * r;
-      pointPositions[i * 2 + 1] = centerY + Math.sin(angle) * r;
+      const theta = i * goldenAngle;
+      const r = 28 * Math.sqrt(i + 1);
+      pointPositions[i * 2] = centerX + Math.cos(theta) * r;
+      pointPositions[i * 2 + 1] = centerY + Math.sin(theta) * r;
 
       // Color mapping
       let color = TYPE_COLORS.Default;
@@ -170,7 +171,7 @@ export default function GraphVisualizer({ isOpen, onClose }) {
       pointColors[i * 4 + 3] = color[3];
 
       // Point size based on degree
-      pointSizes[i] = Math.max(12, Math.min(32, 12 + entity.degree * 2.5));
+      pointSizes[i] = Math.max(12, Math.min(30, 12 + entity.degree * 2));
     });
 
     // Links Typed Arrays
@@ -199,11 +200,26 @@ export default function GraphVisualizer({ isOpen, onClose }) {
         backgroundColor: "#131314", // Consistent chat dark background
         spaceSize: 4096,
         spaceDimensions: is3D ? 3 : 2,
-        simulationGravity: 0.25,
-        simulationRepulsion: 1.2,
-        simulationCenter: 0.05,
-        simulationLinkDistance: 50,
-        simulationFriction: 0.85,
+
+        // Stabilized force-directed physics parameters:
+        // 1. simulationFriction: lower value (0.22) = high damping, prevents perpetual oscillation & drifting
+        simulationFriction: 0.22,
+        // 2. simulationGravity: reduced (0.04) to avoid rubber-band tug-of-war with repulsion
+        simulationGravity: 0.04,
+        // 3. simulationRepulsion: balanced (0.55) to prevent explosive shaking
+        simulationRepulsion: 0.55,
+        // 4. simulationCenter: smooth center-of-mass anchor
+        simulationCenter: 0.08,
+        // 5. simulationDecay: cools down faster so nodes quickly settle into static equilibrium
+        simulationDecay: 1200,
+        // 6. simulationCollision: prevents overlapping nodes from bouncing
+        simulationCollision: 0.6,
+        simulationCollisionPadding: 6,
+        simulationCollisionIterations: 2,
+        // 7. simulationLinkSpring & distance: smooth elastic links
+        simulationLinkSpring: 0.8,
+        simulationLinkDistance: 45,
+
         curvedLinks: true,
         renderHoveredPointRing: true,
         hoveredPointRingColor: "#4285f4",
@@ -228,7 +244,8 @@ export default function GraphVisualizer({ isOpen, onClose }) {
       cosmosGraph.setLinkColors(linkColors);
       cosmosGraph.setLinkArrows(linkArrows);
 
-      cosmosGraph.render();
+      // Render with moderate initial alpha so it settles smoothly without shockwaves
+      cosmosGraph.render(0.6);
       cosmosGraph.fitView(400, 0.15);
 
       graphRef.current = cosmosGraph;
