@@ -116,7 +116,7 @@ const blockMathExtension = {
         displayMode: true,
         throwOnError: false,
       });
-      return `<div class="katex-display-wrapper"><div class="katex-display">${mathHtml}</div></div>`;
+      return `<div class="katex-display-wrapper">${mathHtml}</div>`;
     } catch (e) {
       return token.raw;
     }

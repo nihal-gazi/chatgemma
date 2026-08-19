@@ -1864,58 +1864,52 @@
 }
 
 /* ==========================================================================
-   LaTeX Math Scroll Overflow (KaTeX)
+   LaTeX Math Scroll Overflow & Precision Alignment (KaTeX)
    ========================================================================== */
 
-/* Inline Math: Wraps long math without breaking line flow or blowing out viewport */
+/* Inline Math: Natural inline display preserving KaTeX's internal .strut baseline alignment */
 .katex-inline-wrapper {
-  display: inline-block;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  vertical-align: -0.25em;
-  padding: 1px 3px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.katex-inline-wrapper::-webkit-scrollbar {
-  display: none;
+  display: inline;
+  padding: 0 1px;
 }
 
 .gemini-markdown-body .katex {
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  vertical-align: -0.2em;
+  font-size: 1.05em;
+  text-rendering: auto;
+  line-height: normal;
+  /* Keep default vertical alignment and strut handling */
 }
 
-/* Block / Display Math */
-.katex-display-wrapper,
-.katex-display {
+/* Block / Display Math: Scrollable container for wide equations */
+.katex-display-wrapper {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   margin: 14px 0 !important;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.02);
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  text-align: center;
 }
 
-.katex-display-wrapper::-webkit-scrollbar,
-.katex-display::-webkit-scrollbar {
+.katex-display-wrapper::-webkit-scrollbar {
   height: 5px;
 }
 
-.katex-display-wrapper::-webkit-scrollbar-thumb,
-.katex-display::-webkit-scrollbar-thumb {
+.katex-display-wrapper::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
+}
+
+.katex-display-wrapper .katex-display {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100%;
+  overflow: visible;
 }
 
 .gemini-markdown-body ul,
@@ -2008,13 +2002,14 @@
   color: rgba(140, 144, 148, 0.6) !important;
 }
 
-.thinking-content-area *,
-.thinking-content-area .thinking-markdown-body *,
-.thinking-content-area .gemini-markdown-body *,
-.gemini-markdown-body.thinking-markdown-body * {
+/* Exclude KaTeX math elements from global thought text font-size & line-height overrides */
+.thinking-content-area *:not(.katex):not(.katex *):not(.katex-display):not(.katex-display *),
+.thinking-content-area .thinking-markdown-body *:not(.katex):not(.katex *):not(.katex-display):not(.katex-display *),
+.thinking-content-area .gemini-markdown-body *:not(.katex):not(.katex *):not(.katex-display):not(.katex-display *),
+.gemini-markdown-body.thinking-markdown-body *:not(.katex):not(.katex *):not(.katex-display):not(.katex-display *) {
   font-size: 0.74rem;
   line-height: 1.45;
-  color: rgba(140, 144, 148, 0.6) !important;
+  color: rgba(140, 144, 148, 0.6);
 }
 
 .thinking-content-area h1,
@@ -2038,7 +2033,6 @@
 .thinking-content-area li,
 .thinking-content-area ul,
 .thinking-content-area ol,
-.thinking-content-area span,
 .thinking-content-area em,
 .thinking-markdown-body p,
 .thinking-markdown-body li,
@@ -2072,6 +2066,58 @@
   font-size: 0.74rem !important;
   color: rgba(130, 134, 138, 0.6) !important;
   border-left-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* ==========================================================================
+   KaTeX Math Protection in Thought Process (Prevents Squishing & Overlap)
+   ========================================================================== */
+.thinking-content-area .katex-inline-wrapper,
+.thinking-markdown-body .katex-inline-wrapper {
+  display: inline;
+  padding: 0 1px;
+}
+
+.thinking-content-area .katex,
+.thinking-markdown-body .katex {
+  font-size: 0.95em !important;
+  line-height: normal !important;
+  color: rgba(180, 184, 188, 0.85) !important;
+  text-rendering: auto;
+  font-style: normal;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* Ensure KaTeX internal sub/sup/fraction/radical components compute their relative sizes naturally */
+.thinking-content-area .katex *,
+.thinking-content-area .katex *:not(.katex-display),
+.thinking-markdown-body .katex *,
+.thinking-markdown-body .katex *:not(.katex-display) {
+  font-size: inherit;
+  line-height: normal !important;
+  letter-spacing: normal !important;
+  box-sizing: content-box;
+}
+
+.thinking-content-area .katex .mathnormal,
+.thinking-content-area .katex .mord,
+.thinking-content-area .katex .mbin,
+.thinking-content-area .katex .mrel,
+.thinking-content-area .katex .mopen,
+.thinking-content-area .katex .mclose,
+.thinking-content-area .katex .mpunct,
+.thinking-content-area .katex .minner,
+.thinking-content-area .katex .mop {
+  font-size: inherit !important;
+  line-height: normal !important;
+}
+
+.thinking-content-area .katex-display-wrapper,
+.thinking-markdown-body .katex-display-wrapper {
+  margin: 8px 0 !important;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  text-align: center;
 }
 
 /* ==========================================================================
