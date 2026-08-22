@@ -7,6 +7,7 @@
 
 import { CONFIG } from "../config/config.js";
 import { fetchWithRateLimit } from "./api.js";
+import { estimateTokens } from "../utils/index.js";
 
 const STORAGE_KEY = "chatgemma_user_md_v1";
 
@@ -29,11 +30,10 @@ export class PersonalizationService {
   }
 
   /**
-   * Approximate token estimation (~3.8 characters per token for English text & Markdown)
+   * Approximate token estimation
    */
   estimateTokens(text) {
-    if (!text || typeof text !== "string") return 0;
-    return Math.ceil(text.trim().length / 3.8);
+    return estimateTokens(text);
   }
 
   /**

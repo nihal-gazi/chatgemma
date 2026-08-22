@@ -5,25 +5,18 @@
 
 import { CONFIG } from "../config/config.js";
 import { toolRegistry } from "../tools/index.js";
+import {
+  estimateTokens,
+  extractChatByTokenLimit,
+  pruneTurnsToTokenLimit,
+  sleep,
+} from "../utils/index.js";
 
 const MAX_INPUT_TOKEN_LIMIT = 16000;
 const SAFETY_BUFFER_TOKENS = 400;
 
-/**
- * Fast, conservative token estimator for Gemma / Gemini payload objects (~3.5 chars/token).
- */
-export function estimateTokens(obj) {
-  if (!obj) return 0;
-  if (typeof obj === "string") {
-    return Math.ceil(obj.length / 3.5);
-  }
-  try {
-    const str = typeof obj === "object" ? JSON.stringify(obj) : String(obj);
-    return Math.ceil(str.length / 3.5);
-  } catch {
-    return 0;
-  }
-}
+// Re-export estimateTokens for backward compatibility
+export { estimateTokens };
 
 /**
  * Modular API Rate Limiter & Call History Recorder
@@ -123,45 +116,15 @@ export class ApiRateLimiter {
         `%c[ChatGemma][RateLimit] Active cooldown active. Pausing ${(waitMs / 1000).toFixed(1)}s before next call...`,
         "color: #f59e0b; font-weight: bold;"
       );
-      await this._sleep(waitMs, signal);
+      await sleep(waitMs, signal);
     }
 
     // 2. Enforce minimum call spacing to avoid micro-burst 429s
     const timeSinceLast = Date.now() - this.lastCallTime;
     if (timeSinceLast < this.minCallSpacingMs) {
       const spacingWait = this.minCallSpacingMs - timeSinceLast;
-      await this._sleep(spacingWait, signal);
+      await sleep(spacingWait, signal);
     }
-  }
-
-  /**
-   * Helper sleep that respects AbortSignal.
-   */
-  _sleep(ms, signal = null) {
-    return new Promise((resolve, reject) => {
-      if (signal?.aborted) {
-        const err = new Error("Generation aborted during rate limit wait.");
-        err.name = "AbortError";
-        return reject(err);
-      }
-
-      const timer = setTimeout(() => {
-        if (signal) signal.removeEventListener("abort", onAbort);
-        resolve();
-      }, ms);
-
-      const onAbort = () => {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener("abort", onAbort);
-        const err = new Error("Generation aborted during rate limit wait.");
-        err.name = "AbortError";
-        reject(err);
-      };
-
-      if (signal) {
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-    });
   }
 }
 
@@ -201,7 +164,7 @@ export async function fetchWithRateLimit(
           `%c[ChatGemma][Network] Fetch failed (${err.message}). Retrying in ${backoffMs}ms (Attempt ${attempt}/${maxRetries})...`,
           "color: #f59e0b;"
         );
-        await apiRateLimiter._sleep(backoffMs, signal);
+        await sleep(backoffMs, signal);
         continue;
       }
       throw err;
@@ -245,7 +208,7 @@ export async function fetchWithRateLimit(
           });
         }
 
-        await apiRateLimiter._sleep(waitMs, signal);
+        await sleep(waitMs, signal);
         continue;
       }
     }
@@ -279,130 +242,6 @@ export class GemmaApiService {
       this.abortController = null;
       console.log("%c[ChatGemma] Request Aborted by User", "color: #f87171; font-weight: bold;");
     }
-  }
-
-  /**
-   * Formats a single message into one or more Google GenAI content turn objects.
-   */
-  _formatSingleMessage(msg) {
-    if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0) {
-      // Model turn that invoked function calls
-      const functionCallParts = [];
-
-      for (const tc of msg.toolCalls) {
-        if (tc.name === "run_code" || tc.name === "code_execution") {
-          functionCallParts.push({
-            executableCode: {
-              language: tc.args?.language || "PYTHON",
-              code: tc.args?.code || "",
-            },
-          });
-          functionCallParts.push({
-            codeExecutionResult: {
-              outcome: tc.status === "error" ? "OUTCOME_FAILED" : "OUTCOME_OK",
-              output: tc.response?.stdout || tc.response?.output || "",
-            },
-          });
-        } else if (tc.name !== "web_search" && tc.name !== "google_search") {
-          functionCallParts.push({
-            functionCall: {
-              name: tc.name,
-              args: tc.args || {},
-            },
-          });
-        }
-      }
-
-      if (msg.content && msg.content.trim()) {
-        functionCallParts.push({ text: msg.content });
-      }
-
-      const turns = [];
-      turns.push({
-        role: "model",
-        parts: functionCallParts.length > 0 ? functionCallParts : [{ text: msg.content || "" }],
-      });
-
-      // Function response turns for custom tools
-      for (const tc of msg.toolCalls) {
-        if (
-          tc.name !== "run_code" &&
-          tc.name !== "code_execution" &&
-          tc.name !== "web_search" &&
-          tc.name !== "google_search"
-        ) {
-          turns.push({
-            role: "function",
-            parts: [
-              {
-                functionResponse: {
-                  name: tc.name,
-                  response: tc.response || { result: "ok" },
-                },
-              },
-            ],
-          });
-        }
-      }
-      return turns;
-    } else {
-      return [
-        {
-          role: msg.role === "assistant" ? "model" : "user",
-          parts: [{ text: msg.content || "" }],
-        },
-      ];
-    }
-  }
-
-  /**
-   * Formats messages into Google GenAI content payload format dynamically.
-   * Rather than using a fixed K value, it adds messages from newest to oldest
-   * until the available token budget (out of 16,000 total tokens) is reached.
-   */
-  _formatContents(messages, availableBudget = 16000) {
-    if (!Array.isArray(messages) || messages.length === 0) return [];
-
-    const selectedTurns = [];
-    let currentTokens = 0;
-
-    // Iterate backwards from the latest message to oldest
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      const turns = this._formatSingleMessage(msg);
-      const turnsTokens = estimateTokens(turns);
-
-      // Always include at least the very latest user message
-      if (i === messages.length - 1) {
-        selectedTurns.unshift(...turns);
-        currentTokens += turnsTokens;
-        continue;
-      }
-
-      // If adding this older message would exceed available budget, stop adding older history
-      if (currentTokens + turnsTokens > availableBudget) {
-        console.log(
-          `%c[ChatGemma][ContextWindow] Context budget limit reached (~${currentTokens + turnsTokens} > ${availableBudget} tokens). Dynamic window kept ${messages.length - 1 - i} previous turns within 16,000 token limit.`,
-          "color: #f59e0b;"
-        );
-        break;
-      }
-
-      selectedTurns.unshift(...turns);
-      currentTokens += turnsTokens;
-    }
-
-    return selectedTurns;
-  }
-
-  /**
-   * Prunes oldest turns if multi-turn tool execution expands payload beyond available budget.
-   */
-  _pruneContentsIfExceeded(contents, availableBudget) {
-    while (contents.length > 2 && estimateTokens(contents) > availableBudget) {
-      contents.shift();
-    }
-    return contents;
   }
 
   /**
@@ -503,7 +342,7 @@ PROTOCOL:
     );
 
     // Prepare contents by dynamically adding messages until availableMessageBudget is filled
-    let currentContents = this._formatContents(messages, availableMessageBudget);
+    let currentContents = extractChatByTokenLimit(messages, availableMessageBudget);
     const contentsTokens = estimateTokens(currentContents);
     const totalEstimatedInputTokens = systemPromptTokens + toolsTokens + contentsTokens;
 
@@ -906,7 +745,7 @@ PROTOCOL:
         }
 
         // Keep multi-turn context within the allocated token budget
-        currentContents = this._pruneContentsIfExceeded(currentContents, availableMessageBudget);
+        currentContents = pruneTurnsToTokenLimit(currentContents, availableMessageBudget);
       }
     } catch (err) {
       if (err.name !== "AbortError") {

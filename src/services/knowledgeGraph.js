@@ -1,5 +1,6 @@
 import { CONFIG } from "../config/config.js";
 import { fetchWithRateLimit } from "./api.js";
+import { extractJsonFromText } from "../utils/index.js";
 
 const STORAGE_KEY = "chatgemma_knowledge_graph_v1";
 
@@ -531,22 +532,8 @@ Return ONLY a JSON object with this exact structure:
           .map((p) => p.text)
           .join("\n") || parts.map((p) => p.text || "").join("\n");
 
-      // Extract JSON substring from markdown block or find outer braces { ... }
-      let jsonStr = "";
-      const jsonBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-      if (jsonBlockMatch && jsonBlockMatch[1]) {
-        jsonStr = jsonBlockMatch[1].trim();
-      } else {
-        const firstBrace = rawText.indexOf("{");
-        const lastBrace = rawText.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          jsonStr = rawText.slice(firstBrace, lastBrace + 1).trim();
-        }
-      }
-
-      if (!jsonStr) return null;
-
-      const parsed = JSON.parse(jsonStr);
+      const parsed = extractJsonFromText(rawText);
+      if (!parsed || typeof parsed !== "object") return null;
 
       // Ingest entities
       if (Array.isArray(parsed.entities)) {

@@ -5,16 +5,7 @@ import ToolCallPill from "./ToolCallPill.jsx";
 import MarkdownRenderer from "./MarkdownRenderer.jsx";
 import MessageActions from "./MessageActions.jsx";
 import { useChat } from "../../context/ChatContext.jsx";
-
-const isMobileDevice = () => {
-  if (typeof window === "undefined") return false;
-  const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent || ""
-  );
-  const isNarrow = window.innerWidth <= 768;
-  return (hasTouch && isNarrow) || isMobileUA;
-};
+import { isMobileDevice, copyToClipboard } from "../../utils/index.js";
 
 export default function MessageItem({ message, index, isLastUserMessage, isGenerating }) {
   const isUser = message.role === "user";

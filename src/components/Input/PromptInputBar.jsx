@@ -2,16 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Plus, ArrowUp, Square, Mic } from "../Icons/index.jsx";
 import ModelSelector from "./ModelSelector.jsx";
 import { useChat } from "../../context/ChatContext.jsx";
-
-const isMobileDevice = () => {
-  if (typeof window === "undefined") return false;
-  const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent || ""
-  );
-  const isNarrow = window.innerWidth <= 768;
-  return (hasTouch && isNarrow) || isMobileUA;
-};
+import { isMobileDevice } from "../../utils/index.js";
 
 export default function PromptInputBar() {
   const { sendMessage, isGenerating, stopGeneration } = useChat();
