@@ -1,5 +1,16 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Pencil, Copy, Check, ChevronDown, ChevronUp } from "../Icons/index.jsx";
+import {
+  Pencil,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  FileCode,
+  ImageIcon,
+  Eye,
+  X,
+} from "../Icons/index.jsx";
 import ThinkingBlock from "./ThinkingBlock.jsx";
 import ToolCallPill from "./ToolCallPill.jsx";
 import MarkdownRenderer from "./MarkdownRenderer.jsx";
@@ -15,9 +26,12 @@ export default function MessageItem({ message, index, isLastUserMessage, isGener
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [activeLightboxImg, setActiveLightboxImg] = useState(null);
+  const [expandedFileId, setExpandedFileId] = useState(null);
   const editAreaRef = useRef(null);
 
   const isLong = message.content && (message.content.length > 140 || message.content.split("\n").length > 3);
+  const hasFiles = Array.isArray(message.files) && message.files.length > 0;
 
   useEffect(() => {
     setEditText(message.content);
@@ -33,7 +47,7 @@ export default function MessageItem({ message, index, isLastUserMessage, isGener
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(message.content);
+      await copyToClipboard(message.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -101,48 +115,131 @@ export default function MessageItem({ message, index, isLastUserMessage, isGener
     }
 
     return (
-      <div className="user-message-row">
-        <div className="user-message-wrapper">
-          <div className={`user-bubble-container ${isLong && !isExpanded ? "collapsed-prompt" : ""}`}>
-            <div className="user-bubble-content">{message.content}</div>
-
-            {/* Expand / Collapse toggle for long prompt bubbles (Image 3 & 4 style) */}
-            {isLong && (
+      <>
+        {/* Lightbox Modal for Clicked Image */}
+        {activeLightboxImg && (
+          <div className="image-lightbox-modal" onClick={() => setActiveLightboxImg(null)}>
+            <div className="image-lightbox-content" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
-                className="user-bubble-expand-toggle"
-                onClick={() => setIsExpanded(!isExpanded)}
-                title={isExpanded ? "Collapse prompt" : "Expand prompt"}
+                className="lightbox-close-btn"
+                onClick={() => setActiveLightboxImg(null)}
               >
-                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                <X size={20} />
               </button>
-            )}
+              <img src={activeLightboxImg.dataUrl} alt={activeLightboxImg.name} className="lightbox-img" />
+              <div className="lightbox-caption">{activeLightboxImg.name} ({activeLightboxImg.formattedSize})</div>
+            </div>
           </div>
-          <div className="user-bubble-actions">
-            <button
-              className="user-bubble-action-btn"
-              onClick={handleCopy}
-              title={copied ? "Copied!" : "Copy message"}
-            >
-              {copied ? <Check size={14} className="copied-icon" /> : <Copy size={14} />}
-            </button>
+        )}
 
-            {/* ONLY the last sent user message gets the inline Edit option */}
-            {isLastUserMessage && !isGenerating && (
-              <button
-                className="user-bubble-action-btn"
-                onClick={() => {
-                  setEditText(message.content);
-                  setIsEditing(true);
-                }}
-                title="Edit message"
-              >
-                <Pencil size={14} />
-              </button>
+        <div className="user-message-row">
+          <div className="user-message-wrapper">
+            {/* Attached Multimodal Files & Images */}
+            {hasFiles && (
+              <div className="user-message-attachments">
+                {message.files.map((file) => {
+                  if (file.isImage) {
+                    return (
+                      <div key={file.id} className="message-attachment-image-card">
+                        <img
+                          src={file.dataUrl}
+                          alt={file.name}
+                          className="message-image-preview"
+                          onClick={() => setActiveLightboxImg(file)}
+                          title={`Click to view full image: ${file.name}`}
+                        />
+                        <span className="attachment-caption">{file.name}</span>
+                      </div>
+                    );
+                  }
+
+                  const isExpandedFile = expandedFileId === file.id;
+                  return (
+                    <div key={file.id} className="message-attachment-doc-card">
+                      <div className="doc-card-header">
+                        <div className="doc-card-left">
+                          {file.language !== "text" ? <FileCode size={18} /> : <FileText size={18} />}
+                          <div className="doc-card-info">
+                            <span className="doc-card-name" title={file.name}>
+                              {file.name}
+                            </span>
+                            <span className="doc-card-meta">
+                              {file.formattedSize} • {file.linesCount ? `${file.linesCount} lines` : file.language}
+                            </span>
+                          </div>
+                        </div>
+
+                        {file.textContent && (
+                          <button
+                            type="button"
+                            className="doc-preview-toggle-btn"
+                            onClick={() => setExpandedFileId(isExpandedFile ? null : file.id)}
+                            title={isExpandedFile ? "Collapse snippet" : "View snippet"}
+                          >
+                            <Eye size={14} />
+                            <span>{isExpandedFile ? "Hide" : "Preview"}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {isExpandedFile && file.textContent && (
+                        <pre className="doc-card-snippet-view">
+                          <code>{file.textContent.slice(0, 1500)}{file.textContent.length > 1500 ? "\n... (truncated for preview)" : ""}</code>
+                        </pre>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
+
+            {message.content && (
+              <div className={`user-bubble-container ${isLong && !isExpanded ? "collapsed-prompt" : ""}`}>
+                <div className="user-bubble-content">{message.content}</div>
+
+                {/* Expand / Collapse toggle for long prompt bubbles */}
+                {isLong && (
+                  <button
+                    type="button"
+                    className="user-bubble-expand-toggle"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    title={isExpanded ? "Collapse prompt" : "Expand prompt"}
+                  >
+                    {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="user-bubble-actions">
+              {message.content && (
+                <button
+                  className="user-bubble-action-btn"
+                  onClick={handleCopy}
+                  title={copied ? "Copied!" : "Copy message"}
+                >
+                  {copied ? <Check size={14} className="copied-icon" /> : <Copy size={14} />}
+                </button>
+              )}
+
+              {/* ONLY the last sent user message gets the inline Edit option */}
+              {isLastUserMessage && !isGenerating && message.content && (
+                <button
+                  className="user-bubble-action-btn"
+                  onClick={() => {
+                    setEditText(message.content);
+                    setIsEditing(true);
+                  }}
+                  title="Edit message"
+                >
+                  <Pencil size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 

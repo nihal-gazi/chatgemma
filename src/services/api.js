@@ -326,12 +326,13 @@ export class GemmaApiService {
 Current Date: ${currentDateStr}.
 
 PROTOCOL:
-1. Use available tools (user_knowledge_graph_search, user_knowledge_graph_write, user_knowledge_graph_delete, knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) when querying learned knowledge, saving facts, soft-deleting items, web search grounding, computation, or history is needed.
-2. Use user_knowledge_graph_search, user_knowledge_graph_write, and user_knowledge_graph_delete for USER personal preferences, user identity, workflows, personal tools, and user projects. (Writing/deleting here automatically synchronizes user.md).
-3. Use knowledge_search, knowledge_graph_write, and knowledge_graph_delete for general world knowledge, domain concepts, external frameworks, and shared project knowledge.
-4. Use soft-deletion (isActive = false) via delete tools when data becomes outdated.
-5. Ground responses in user preferences, workflows, and constraints outlined in the User Personalization Profile (user.md).
-6. Synthesize all reasoning and tool results into a clear, helpful final response.`;
+1. Use available tools (file_search, user_knowledge_graph_search, user_knowledge_graph_write, user_knowledge_graph_delete, knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) when querying uploaded files/documents, learned knowledge, saving facts, soft-deleting items, web search grounding, computation, or history is needed.
+2. Use file_search to inspect, search, or read full contents of uploaded files, documents, images, and attached code.
+3. Use user_knowledge_graph_search, user_knowledge_graph_write, and user_knowledge_graph_delete for USER personal preferences, user identity, workflows, personal tools, and user projects. (Writing/deleting here automatically synchronizes user.md).
+4. Use knowledge_search, knowledge_graph_write, and knowledge_graph_delete for general world knowledge, domain concepts, external frameworks, and shared project knowledge.
+5. Use soft-deletion (isActive = false) via delete tools when data becomes outdated.
+6. Ground responses in user preferences, workflows, constraints outlined in the User Personalization Profile (user.md), and attached multimodal files.
+7. Synthesize all reasoning and tool results into a clear, helpful final response.`;
 
     // 4. Calculate Dynamic Context Budget (Target total input <= 16,000 tokens)
     const systemPromptTokens = estimateTokens(fullSystemInstruction);

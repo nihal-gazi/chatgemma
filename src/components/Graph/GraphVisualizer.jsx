@@ -27,6 +27,9 @@ const TYPE_COLORS = {
   Concept: [0.506, 0.549, 0.973, 1.0], // #818cf8 (Indigo)
   Preference: [0.949, 0.659, 0.231, 1.0], // #f2a83b (Amber)
   Event: [0.851, 0.396, 0.439, 1.0], // #d96570 (Pink/Coral)
+  File: [0.28, 0.72, 0.88, 1.0], // #47b8e0 (Cyan)
+  Document: [0.38, 0.65, 0.98, 1.0], // #60a5fa (Ice Blue)
+  Image: [0.85, 0.45, 0.78, 1.0], // #d973c7 (Magenta/Violet)
   Default: [0.89, 0.89, 0.89, 1.0], // #e3e3e3 (Primary text)
   Inactive: [0.373, 0.388, 0.408, 0.4], // #5f6368 (Muted)
 };

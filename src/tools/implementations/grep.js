@@ -90,6 +90,31 @@ export const grepTool = {
             });
           }
         }
+
+        // Also search inside attached files in this message
+        if (Array.isArray(msg.files)) {
+          for (const file of msg.files) {
+            if (!file.isImage && file.textContent) {
+              const fileLines = file.textContent.split("\n");
+              for (let fLineIdx = 0; fLineIdx < fileLines.length; fLineIdx++) {
+                const fLine = fileLines[fLineIdx];
+                regex.lastIndex = 0;
+                if (regex.test(fLine)) {
+                  matches.push({
+                    sessionTitle,
+                    sessionId: session.id,
+                    role: msg.role,
+                    fileName: file.name,
+                    fileId: file.id,
+                    lineNumber: fLineIdx + 1,
+                    lineContent: fLine.trim(),
+                    timestamp: msg.timestamp || "",
+                  });
+                }
+              }
+            }
+          }
+        }
       }
     }
 

@@ -187,10 +187,13 @@ export function ChatProvider({ children }) {
   };
 
   /**
-   * Send a prompt in active session and stream response with thought separation.
+   * Send a prompt in active session with optional multimodal file/image attachments.
+   * Streams response with thought separation and automatically indexes files into Knowledge Graph.
    */
-  const sendMessage = async (promptText) => {
-    if (!promptText || !promptText.trim() || isGenerating) return;
+  const sendMessage = async (promptText = "", attachedFiles = []) => {
+    const hasText = promptText && promptText.trim().length > 0;
+    const hasFiles = Array.isArray(attachedFiles) && attachedFiles.length > 0;
+    if ((!hasText && !hasFiles) || isGenerating) return;
 
     let targetSession = activeSession;
     if (!targetSession) {
@@ -201,20 +204,34 @@ export function ChatProvider({ children }) {
     const userMsg = {
       id: generateId("msg"),
       role: "user",
-      content: promptText.trim(),
+      content: (promptText || "").trim(),
+      files: hasFiles ? attachedFiles : undefined,
       timestamp,
     };
 
-    // Auto-update title from first user message
+    // Auto-update title from first user message or filename
+    const fallbackTitle = hasFiles ? `File: ${attachedFiles[0].name}` : "New Chat";
     const updatedTitle =
       targetSession.messages.length === 0 || targetSession.title === "New Chat"
-        ? promptText.trim().replace(/\n+/g, " ").slice(0, 30)
+        ? (hasText ? promptText.trim().replace(/\n+/g, " ").slice(0, 30) : fallbackTitle)
         : targetSession.title;
 
     const newMessages = [...targetSession.messages, userMsg];
 
+    // Automatically index uploaded files into Knowledge Graph
+    if (hasFiles) {
+      for (const file of attachedFiles) {
+        knowledgeGraphInstance.indexUploadedFile(file, targetSession.id);
+        if (settings.allowKnowledgeGraphReadWrite !== false) {
+          userKnowledgeGraphInstance.indexUploadedFile(file, targetSession.id);
+        }
+      }
+      setKnowledgeGraphStats(knowledgeGraphInstance.getStats());
+      setUserKnowledgeGraphStats(userKnowledgeGraphInstance.getStats());
+    }
+
     // If personalization is enabled, evaluate user prompt asynchronously to update user.md
-    if (settings.enablePersonalization !== false) {
+    if (settings.enablePersonalization !== false && hasText) {
       personalizationInstance
         .updateFromPrompt({
           userMessage: promptText.trim(),

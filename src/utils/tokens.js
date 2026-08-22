@@ -7,22 +7,48 @@
  * @param {string|object|Array} input - Text, object, or payload array to estimate
  * @returns {number} Estimated token count
  */
+/**
+ * Fast, conservative token estimator for Gemma / Gemini payload objects (~3.5 chars/token).
+ * Accounts for inline images (~258 tokens per image) and text content.
+ * @param {string|object|Array} input - Text, object, or payload array to estimate
+ * @returns {number} Estimated token count
+ */
 export function estimateTokens(input) {
   if (!input) return 0;
   if (typeof input === "string") {
     return Math.ceil(input.length / 3.5);
   }
-  try {
-    const str = typeof input === "object" ? JSON.stringify(input) : String(input);
-    return Math.ceil(str.length / 3.5);
-  } catch {
-    return 0;
+
+  // If payload contains inline image parts, don't count raw base64 string length
+  if (Array.isArray(input)) {
+    return input.reduce((acc, item) => acc + estimateTokens(item), 0);
   }
+
+  if (typeof input === "object") {
+    if (input.inlineData) {
+      return 258; // Standard image token footprint
+    }
+    if (input.parts && Array.isArray(input.parts)) {
+      return input.parts.reduce((acc, part) => {
+        if (part.inlineData) return acc + 258;
+        return acc + estimateTokens(part);
+      }, 0);
+    }
+    try {
+      const str = JSON.stringify(input);
+      return Math.ceil(str.length / 3.5);
+    } catch {
+      return 0;
+    }
+  }
+
+  return 0;
 }
 
 /**
  * Formats a single chat message into Google GenAI content turn objects.
- * Handles assistant turns with code execution, function calling, and regular text.
+ * Handles multimodal image parts, code/document file attachments,
+ * assistant code execution, function calling, and regular text.
  * @param {object} msg - Raw message object
  * @returns {Array<object>} Formatted GenAI turn array
  */
@@ -90,10 +116,36 @@ export function formatSingleMessageToGenAI(msg) {
     return turns;
   }
 
+  // User Turn: Include attached images as inlineData and text/code files as structured text blocks
+  const userParts = [];
+
+  if (Array.isArray(msg.files) && msg.files.length > 0) {
+    for (const file of msg.files) {
+      if (file.isImage && file.base64Data) {
+        userParts.push({
+          inlineData: {
+            mimeType: file.type || "image/jpeg",
+            data: file.base64Data,
+          },
+        });
+      } else if (!file.isImage && file.textContent) {
+        userParts.push({
+          text: `[Attached File: ${file.name} (${file.formattedSize || ""})]\n\`\`\`${file.language || ""}\n${file.textContent}\n\`\`\``,
+        });
+      }
+    }
+  }
+
+  if (msg.content && msg.content.trim()) {
+    userParts.push({ text: msg.content.trim() });
+  } else if (userParts.length === 0) {
+    userParts.push({ text: "" });
+  }
+
   return [
     {
       role: msg.role === "assistant" ? "model" : "user",
-      parts: [{ text: msg.content || "" }],
+      parts: userParts,
     },
   ];
 }

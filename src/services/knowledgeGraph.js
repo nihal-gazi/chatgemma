@@ -1,6 +1,6 @@
 import { CONFIG } from "../config/config.js";
 import { fetchWithRateLimit } from "./api.js";
-import { extractJsonFromText } from "../utils/index.js";
+import { extractJsonFromText, extractFileKnowledgeEntities } from "../utils/index.js";
 
 const STORAGE_KEY = "chatgemma_knowledge_graph_v1";
 
@@ -15,6 +15,9 @@ export const ENTITY_TYPES = {
   PREFERENCE: "Preference",
   EVENT: "Event",
   TOOL: "Tool",
+  FILE: "File",
+  DOCUMENT: "Document",
+  IMAGE: "Image",
 };
 
 // Standard Semantic Predicates / Relations
@@ -31,6 +34,9 @@ export const PREDICATE_TYPES = {
   EXPERT_IN: "EXPERT_IN",
   DEPENDS_ON: "DEPENDS_ON",
   IMPLEMENTS: "IMPLEMENTS",
+  ATTACHED_TO: "ATTACHED_TO",
+  DEFINES: "DEFINES",
+  CONTAINS: "CONTAINS",
 };
 
 export class KnowledgeGraphService {
@@ -192,6 +198,41 @@ export class KnowledgeGraphService {
     const relation = this.addRelation({ ...data, isActive: true });
     this.saveToStorage();
     return relation;
+  }
+
+  /**
+   * Automatically indexes an uploaded file or image into the Knowledge Graph.
+   * Creates file/document entity and semantic relationships (ATTACHED_TO, USES, etc.).
+   * @param {object} fileData - Processed file object
+   * @param {string} [sessionId=""] - Associated chat session ID
+   * @returns {object} Extracted { entity, relations }
+   */
+  indexUploadedFile(fileData, sessionId = "") {
+    if (!fileData || !fileData.name) return null;
+
+    const extracted = extractFileKnowledgeEntities(fileData, sessionId);
+    if (!extracted) return null;
+
+    // 1. Add File/Document Entity
+    const savedEntity = this.addEntity({
+      ...extracted.entity,
+      isActive: true,
+    });
+
+    // 2. Add Relations
+    const savedRelations = [];
+    if (Array.isArray(extracted.relations)) {
+      for (const rel of extracted.relations) {
+        const savedRel = this.addRelation({
+          ...rel,
+          isActive: true,
+        });
+        savedRelations.push(savedRel);
+      }
+    }
+
+    this.saveToStorage();
+    return { entity: savedEntity, relations: savedRelations };
   }
 
   /**
