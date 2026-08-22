@@ -3,19 +3,18 @@
  */
 
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
-import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
 import mammoth from "mammoth";
 import { generateId } from "./helpers.js";
 import { estimateTokens } from "./tokens.js";
 
+const DEFAULT_PDF_WORKER_SRC = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "6.2.108"}/pdf.worker.min.mjs`;
+
 // Configure GlobalWorkerOptions.workerSrc for pdfjs-dist
 if (pdfjsLib.GlobalWorkerOptions) {
   try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      pdfWorker ||
-      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "6.2.108"}/pdf.worker.min.mjs`;
-  } catch {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "6.2.108"}/pdf.worker.min.mjs`;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = DEFAULT_PDF_WORKER_SRC;
+  } catch (err) {
+    console.warn("pdfjs workerSrc configuration notice:", err);
   }
 }
 
@@ -88,9 +87,7 @@ export function detectLanguageFromFilename(filename = "") {
 export async function extractTextFromPdf(arrayBuffer) {
   try {
     if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        pdfWorker ||
-        `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "6.2.108"}/pdf.worker.min.mjs`;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = DEFAULT_PDF_WORKER_SRC;
     }
 
     const loadingTask = pdfjsLib.getDocument({

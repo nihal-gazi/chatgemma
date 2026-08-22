@@ -8,6 +8,7 @@
 import { toolRegistry } from "./registry.js";
 import { grepTool } from "./implementations/grep.js";
 import { fileSearchTool } from "./implementations/file_search.js";
+import { brainstormIdeaTool } from "./implementations/brainstorm_idea.js";
 import { knowledgeSearchTool } from "./implementations/knowledge_search.js";
 import { knowledgeGraphWriteTool } from "./implementations/knowledge_graph_write.js";
 import { knowledgeGraphDeleteTool } from "./implementations/knowledge_graph_delete.js";
@@ -18,6 +19,7 @@ import { userKnowledgeGraphDeleteTool } from "./implementations/user_knowledge_g
 // Register Custom Function Calling Tools
 toolRegistry.register(grepTool);
 toolRegistry.register(fileSearchTool);
+toolRegistry.register(brainstormIdeaTool);
 toolRegistry.register(knowledgeSearchTool);
 toolRegistry.register(knowledgeGraphWriteTool);
 toolRegistry.register(knowledgeGraphDeleteTool);
@@ -29,6 +31,7 @@ export { toolRegistry };
 export {
   grepTool,
   fileSearchTool,
+  brainstormIdeaTool,
   knowledgeSearchTool,
   knowledgeGraphWriteTool,
   knowledgeGraphDeleteTool,
