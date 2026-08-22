@@ -295,6 +295,8 @@ export class GemmaApiService {
     executionContext = {}
   ) {
     this.cancelRequest();
+    this.abortController = new AbortController();
+
     const cleanKey = (this.apiKey || CONFIG.defaultApiKey || "").trim().replace(/^["']|["']$/g, "");
 
     if (!cleanKey) {
