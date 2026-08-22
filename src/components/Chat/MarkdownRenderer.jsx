@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { marked } from "marked";
 import hljs from "highlight.js";
 import katex from "katex";
+import { copyToClipboard } from "../../utils/index.js";
 
 // Common programming language list for auto-highlighting to prevent false positives (like 'dust', 'gauss')
 const COMMON_LANGUAGES = [
@@ -191,13 +192,15 @@ export default function MarkdownRenderer({ content, className = "" }) {
       copyBtn.className = "code-copy-action";
       copyBtn.type = "button";
       copyBtn.innerText = "Copy";
-      copyBtn.addEventListener("click", () => {
+      copyBtn.addEventListener("click", async () => {
         if (codeEl) {
-          navigator.clipboard.writeText(codeEl.innerText);
-          copyBtn.innerText = "Copied!";
-          setTimeout(() => {
-            copyBtn.innerText = "Copy";
-          }, 2000);
+          const ok = await copyToClipboard(codeEl.innerText);
+          if (ok) {
+            copyBtn.innerText = "Copied!";
+            setTimeout(() => {
+              copyBtn.innerText = "Copy";
+            }, 2000);
+          }
         }
       });
 

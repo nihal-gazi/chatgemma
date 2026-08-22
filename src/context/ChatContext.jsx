@@ -5,6 +5,7 @@ import { SynapseStorageService } from "../services/storage.js";
 import { CloudSyncService } from "../services/firestore.js";
 import { knowledgeGraphInstance, userKnowledgeGraphInstance } from "../services/knowledgeGraph.js";
 import { personalizationInstance } from "../services/personalization.js";
+import { generateId } from "../utils/index.js";
 import { useAuth } from "./AuthContext.jsx";
 
 const ChatContext = createContext(null);
@@ -12,8 +13,6 @@ const ChatContext = createContext(null);
 export function ChatProvider({ children }) {
   const { user, displayName } = useAuth();
 
-  // Load Initial State from LocalStorage backup
-  const [initialLoaded, setInitialLoaded] = useState(false);
   const [knowledgeGraphStats, setKnowledgeGraphStats] = useState(() => knowledgeGraphInstance.getStats());
   const [userKnowledgeGraphStats, setUserKnowledgeGraphStats] = useState(() => userKnowledgeGraphInstance.getStats());
   const [isExtractingKnowledge, setIsExtractingKnowledge] = useState(false);
@@ -24,7 +23,7 @@ export function ChatProvider({ children }) {
     if (backup?.sessions && backup.sessions.length > 0) {
       return backup.sessions;
     }
-    const defaultId = Math.random().toString(36).substring(2, 10);
+    const defaultId = generateId("chat");
     return [
       {
         id: defaultId,
@@ -121,8 +120,16 @@ export function ChatProvider({ children }) {
   const activeSession =
     sessions.find((s) => s.id === activeSessionId) || sessions[0] || null;
 
+  const _resetStreamingState = () => {
+    setCurrentStreamingThought("");
+    setCurrentStreamingAnswer("");
+    setCurrentStreamingToolCalls([]);
+    setCurrentStreamingReasoningBlocks([]);
+    setGeneratingSessionId(null);
+  };
+
   const createNewSession = (title = "New Chat") => {
-    const newId = Math.random().toString(36).substring(2, 10);
+    const newId = generateId("chat");
     const newSession = {
       id: newId,
       title: title,
@@ -146,7 +153,7 @@ export function ChatProvider({ children }) {
       const filtered = prev.filter((s) => s.id !== id);
       if (filtered.length === 0) {
         const newDefault = {
-          id: Math.random().toString(36).substring(2, 10),
+          id: generateId("chat"),
           title: "New Chat",
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -175,11 +182,7 @@ export function ChatProvider({ children }) {
 
   const stopGeneration = () => {
     apiServiceRef.current.cancelRequest();
-    setGeneratingSessionId(null);
-    setCurrentStreamingThought("");
-    setCurrentStreamingAnswer("");
-    setCurrentStreamingToolCalls([]);
-    setCurrentStreamingReasoningBlocks([]);
+    _resetStreamingState();
     showToast("Generation stopped.", "warning");
   };
 
@@ -196,7 +199,7 @@ export function ChatProvider({ children }) {
 
     const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const userMsg = {
-      id: Math.random().toString(36).substring(2, 10),
+      id: generateId("msg"),
       role: "user",
       content: promptText.trim(),
       timestamp,
@@ -334,7 +337,7 @@ export function ChatProvider({ children }) {
           },
           onComplete: ({ thought, answer, toolCalls, reasoningBlocks }) => {
             const assistantMsg = {
-              id: Math.random().toString(36).substring(2, 10),
+              id: generateId("msg"),
               role: "assistant",
               content: answer,
               thought: thought || "",
@@ -371,30 +374,18 @@ export function ChatProvider({ children }) {
                   : s
               )
             );
-            setCurrentStreamingThought("");
-            setCurrentStreamingAnswer("");
-            setCurrentStreamingToolCalls([]);
-            setCurrentStreamingReasoningBlocks([]);
-            setGeneratingSessionId(null);
+            _resetStreamingState();
           },
           onError: (err) => {
             showToast(`Error: ${err.message}`, "error");
-            setCurrentStreamingToolCalls([]);
-            setCurrentStreamingThought("");
-            setCurrentStreamingAnswer("");
-            setCurrentStreamingReasoningBlocks([]);
-            setGeneratingSessionId(null);
+            _resetStreamingState();
           },
         },
         executionContext
       );
     } catch (err) {
       showToast(`Generation failed: ${err.message}`, "error");
-      setCurrentStreamingToolCalls([]);
-      setCurrentStreamingThought("");
-      setCurrentStreamingAnswer("");
-      setCurrentStreamingReasoningBlocks([]);
-      setGeneratingSessionId(null);
+      _resetStreamingState();
     }
   };
 
