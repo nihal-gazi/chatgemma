@@ -129,9 +129,28 @@ export function formatSingleMessageToGenAI(msg) {
           },
         });
       } else if (!file.isImage && file.textContent) {
-        userParts.push({
-          text: `[Attached File: ${file.name} (${file.formattedSize || ""})]\n\`\`\`${file.language || ""}\n${file.textContent}\n\`\`\``,
-        });
+        const estTokens = file.estimatedTokens || estimateTokens(file.textContent);
+        const isLarge = file.isLargeFile || estTokens > 3500;
+
+        if (isLarge) {
+          const previewExcerpt = file.textContent.slice(0, 600).trim();
+          const pageInfo = file.pageCount ? `, ${file.pageCount} pages` : "";
+          const linesInfo = file.linesCount ? `, ${file.linesCount} lines` : "";
+
+          userParts.push({
+            text: `[Attached Large File: ${file.name} (Size: ${file.formattedSize || ""}${pageInfo}${linesInfo}, Estimated Tokens: ~${estTokens})]
+File Summary / Table of Contents Preview:
+\`\`\`${file.language || "text"}
+${previewExcerpt}
+... [Content truncated for immediate prompt context]
+\`\`\`
+[System Note: This file content was truncated in the prompt to preserve the 16,000-token context budget. You can query specific sections, terms, or functions using the \`grep\` tool (specifying fileName="${file.name}") or \`file_search\` tool (for semantic queries or full page retrieval).]`,
+          });
+        } else {
+          userParts.push({
+            text: `[Attached File: ${file.name} (${file.formattedSize || ""})]\n\`\`\`${file.language || ""}\n${file.textContent}\n\`\`\``,
+          });
+        }
       }
     }
   }

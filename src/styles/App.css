@@ -3694,6 +3694,12 @@ input:checked + .slider:before {
   min-width: 0;
 }
 
+.doc-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .doc-card-name {
   font-size: 0.85rem;
   font-weight: 500;
@@ -3701,6 +3707,19 @@ input:checked + .slider:before {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 260px;
+}
+
+.doc-card-large-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: rgba(66, 133, 244, 0.18);
+  color: #8ab4f8;
+  border: 1px solid rgba(66, 133, 244, 0.35);
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
 }
 
 .doc-card-meta {

@@ -155,17 +155,31 @@ export default function MessageItem({ message, index, isLastUserMessage, isGener
                   }
 
                   const isExpandedFile = expandedFileId === file.id;
+                  const isPdf = file.extension === "pdf";
+                  const isDocx = file.extension === "docx" || file.extension === "doc";
+                  const isCode = !isPdf && !isDocx && file.language !== "text";
+
                   return (
                     <div key={file.id} className="message-attachment-doc-card">
                       <div className="doc-card-header">
                         <div className="doc-card-left">
-                          {file.language !== "text" ? <FileCode size={18} /> : <FileText size={18} />}
+                          {isCode ? <FileCode size={18} /> : <FileText size={18} />}
                           <div className="doc-card-info">
-                            <span className="doc-card-name" title={file.name}>
-                              {file.name}
-                            </span>
+                            <div className="doc-card-title-row">
+                              <span className="doc-card-name" title={file.name}>
+                                {file.name}
+                              </span>
+                              {file.isLargeFile && (
+                                <span className="doc-card-large-badge" title="Indexed for LLM grep and semantic search">
+                                  Indexed
+                                </span>
+                              )}
+                            </div>
                             <span className="doc-card-meta">
-                              {file.formattedSize} • {file.linesCount ? `${file.linesCount} lines` : file.language}
+                              {file.formattedSize}
+                              {file.pageCount ? ` • ${file.pageCount} page${file.pageCount > 1 ? "s" : ""}` : ""}
+                              {file.linesCount && !file.pageCount ? ` • ${file.linesCount} lines` : ""}
+                              {isCode && file.language ? ` • ${file.language}` : ""}
                             </span>
                           </div>
                         </div>
@@ -175,7 +189,7 @@ export default function MessageItem({ message, index, isLastUserMessage, isGener
                             type="button"
                             className="doc-preview-toggle-btn"
                             onClick={() => setExpandedFileId(isExpandedFile ? null : file.id)}
-                            title={isExpandedFile ? "Collapse snippet" : "View snippet"}
+                            title={isExpandedFile ? "Collapse preview" : "View preview"}
                           >
                             <Eye size={14} />
                             <span>{isExpandedFile ? "Hide" : "Preview"}</span>
@@ -185,7 +199,10 @@ export default function MessageItem({ message, index, isLastUserMessage, isGener
 
                       {isExpandedFile && file.textContent && (
                         <pre className="doc-card-snippet-view">
-                          <code>{file.textContent.slice(0, 1500)}{file.textContent.length > 1500 ? "\n... (truncated for preview)" : ""}</code>
+                          <code>
+                            {file.textContent.slice(0, 2000)}
+                            {file.textContent.length > 2000 ? "\n\n... (preview truncated, full content indexed for search)" : ""}
+                          </code>
                         </pre>
                       )}
                     </div>

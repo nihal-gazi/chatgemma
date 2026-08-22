@@ -1,8 +1,15 @@
 /**
- * File & Image Processing, Multimodal Conversion, and Knowledge Graph Entity Extraction
+ * File & Document Parsing, Multi-format Conversion, Large File Budgeting, and Semantic Search Chunking
  */
 
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import mammoth from "mammoth";
 import { generateId } from "./helpers.js";
+import { estimateTokens } from "./tokens.js";
+
+// Token limit threshold beyond which full content is omitted from the raw turn prompt
+// to preserve the 16,000-token context budget. Tools (grep, file_search) are used to query large files.
+export const LARGE_FILE_TOKEN_THRESHOLD = 3500;
 
 /**
  * Format bytes into human-readable string.
@@ -38,6 +45,7 @@ export function detectLanguageFromFilename(filename = "") {
     md: "markdown",
     markdown: "markdown",
     csv: "csv",
+    tsv: "tsv",
     c: "c",
     cpp: "cpp",
     h: "cpp",
@@ -52,16 +60,141 @@ export function detectLanguageFromFilename(filename = "") {
     bash: "bash",
     xml: "xml",
     txt: "text",
+    pdf: "pdf",
+    docx: "docx",
+    doc: "docx",
   };
   return map[ext] || "text";
 }
 
 /**
+ * Cleanly extracts plain text from a PDF ArrayBuffer page-by-page.
+ *
+ * @param {ArrayBuffer} arrayBuffer
+ * @returns {Promise<{ fullText: string, pageCount: number, pages: Array<{ pageNumber: number, text: string }> }>}
+ */
+export async function extractTextFromPdf(arrayBuffer) {
+  try {
+    const loadingTask = pdfjsLib.getDocument({
+      data: arrayBuffer,
+      isEvalSupported: false,
+      useSystemFonts: true,
+      disableFontFace: true,
+    });
+    const pdf = await loadingTask.promise;
+    const pages = [];
+    const fullTextParts = [];
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item) => item.str)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      pages.push({ pageNumber: i, text: pageText });
+      fullTextParts.push(`--- Page ${i} ---\n${pageText}`);
+    }
+
+    const fullText = fullTextParts.join("\n\n");
+    return {
+      fullText: fullText.trim(),
+      pageCount: pdf.numPages,
+      pages,
+    };
+  } catch (err) {
+    console.error("PDF text extraction error:", err);
+    throw new Error(`Failed to parse PDF: ${err.message}`);
+  }
+}
+
+/**
+ * Cleanly extracts text from a Word (.docx) ArrayBuffer.
+ *
+ * @param {ArrayBuffer} arrayBuffer
+ * @returns {Promise<{ fullText: string }>}
+ */
+export async function extractTextFromDocx(arrayBuffer) {
+  try {
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return {
+      fullText: (result.value || "").trim(),
+    };
+  } catch (err) {
+    console.error("DOCX extraction error:", err);
+    throw new Error(`Failed to parse Word document: ${err.message}`);
+  }
+}
+
+/**
+ * Splits document text into semantic chunks for BM25 and semantic keyword queries.
+ *
+ * @param {string} text - Full text of the document
+ * @param {object} options - Chunking options
+ * @returns {Array<{ chunkIndex: number, text: string, startLine: number, endLine: number, pageNumber?: number }>}
+ */
+export function chunkDocument(text = "", options = {}) {
+  const chunkSize = options.chunkSize || 1200; // characters per chunk (~300 tokens)
+  const overlap = options.overlap || 200;
+
+  if (!text) return [];
+
+  const chunks = [];
+  const lines = text.split("\n");
+  let currentChunkLines = [];
+  let currentLength = 0;
+  let chunkStartLine = 1;
+  let chunkIdx = 1;
+  let currentPage = 1;
+
+  for (let l = 0; l < lines.length; l++) {
+    const line = lines[l];
+    const pageMatch = line.match(/^---\s*Page\s*(\d+)\s*---/i);
+    if (pageMatch) {
+      currentPage = parseInt(pageMatch[1], 10);
+    }
+
+    currentChunkLines.push(line);
+    currentLength += line.length + 1;
+
+    if (currentLength >= chunkSize || l === lines.length - 1) {
+      const chunkText = currentChunkLines.join("\n").trim();
+      if (chunkText.length > 0) {
+        chunks.push({
+          chunkIndex: chunkIdx++,
+          text: chunkText,
+          startLine: chunkStartLine,
+          endLine: l + 1,
+          pageNumber: currentPage,
+        });
+      }
+
+      // Overlap by keeping trailing lines
+      const keepLines = [];
+      let overlapLen = 0;
+      for (let k = currentChunkLines.length - 1; k >= 0; k--) {
+        overlapLen += currentChunkLines[k].length + 1;
+        keepLines.unshift(currentChunkLines[k]);
+        if (overlapLen >= overlap) break;
+      }
+
+      currentChunkLines = keepLines;
+      currentLength = overlapLen;
+      chunkStartLine = l + 1 - keepLines.length + 1;
+    }
+  }
+
+  return chunks;
+}
+
+/**
  * Process a raw browser File object into a serialized attachment payload.
- * Supports all image formats, text files, code files, CSV, JSON, Markdown, and documents.
+ * Cleanly handles PDFs, DOCX, Spreadsheets, Code, JSON, Markdown, Text, and Images.
  *
  * @param {File} file - Browser File object
- * @returns {Promise<object>} Processed file object with metadata, base64 data, or text content
+ * @returns {Promise<object>} Processed file object with metadata and clean text content
  */
 export async function processUploadedFile(file) {
   if (!file) throw new Error("No file provided");
@@ -71,7 +204,11 @@ export async function processUploadedFile(file) {
   const size = file.size || 0;
   const type = file.type || "application/octet-stream";
   const extension = (name.split(".").pop() || "").toLowerCase();
-  const isImage = type.startsWith("image/") || ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp"].includes(extension);
+  const formattedSize = formatFileSize(size);
+
+  // 1. Image Formats (PNG, JPG, WebP, GIF, SVG, BMP)
+  const isImage =
+    type.startsWith("image/") || ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp"].includes(extension);
 
   if (isImage) {
     return new Promise((resolve, reject) => {
@@ -85,10 +222,11 @@ export async function processUploadedFile(file) {
           id,
           name,
           size,
-          formattedSize: formatFileSize(size),
+          formattedSize,
           type: type || (extension === "png" ? "image/png" : "image/jpeg"),
           extension,
           isImage: true,
+          isLargeFile: false,
           dataUrl,
           base64Data,
         });
@@ -98,26 +236,108 @@ export async function processUploadedFile(file) {
     });
   }
 
-  // Text, code, document, markdown, JSON, CSV files
+  // 2. PDF Documents (.pdf) - Page-by-Page Clean Text Extraction
+  if (extension === "pdf") {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const arrayBuffer = reader.result;
+          const { fullText, pageCount, pages } = await extractTextFromPdf(arrayBuffer);
+          const estimatedTokens = estimateTokens(fullText);
+          const isLargeFile = estimatedTokens > LARGE_FILE_TOKEN_THRESHOLD;
+          const lines = fullText.split("\n");
+
+          // Clean preview snippet from first page
+          const firstPagePreview = pages[0]?.text
+            ? `Page 1: ${pages[0].text.slice(0, 240)}...`
+            : fullText.slice(0, 240);
+
+          resolve({
+            id,
+            name,
+            size,
+            formattedSize,
+            type: "application/pdf",
+            extension: "pdf",
+            isImage: false,
+            isLargeFile,
+            pageCount,
+            estimatedTokens,
+            textContent: fullText,
+            language: "pdf",
+            linesCount: lines.length,
+            snippet: `PDF Document (${pageCount} page${pageCount > 1 ? "s" : ""}, ${lines.length} lines)\n${firstPagePreview}`,
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = (err) => reject(new Error(`Failed to read PDF file "${name}": ${err.message}`));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // 3. Word Documents (.docx, .doc)
+  if (extension === "docx" || extension === "doc") {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const arrayBuffer = reader.result;
+          const { fullText } = await extractTextFromDocx(arrayBuffer);
+          const estimatedTokens = estimateTokens(fullText);
+          const isLargeFile = estimatedTokens > LARGE_FILE_TOKEN_THRESHOLD;
+          const lines = fullText.split("\n");
+
+          resolve({
+            id,
+            name,
+            size,
+            formattedSize,
+            type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            extension,
+            isImage: false,
+            isLargeFile,
+            estimatedTokens,
+            textContent: fullText,
+            language: "docx",
+            linesCount: lines.length,
+            snippet: `Word Document (${lines.length} lines)\n${fullText.slice(0, 240)}...`,
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = (err) => reject(new Error(`Failed to read Word document "${name}": ${err.message}`));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // 4. Text, Code, Markdown, JSON, CSV, Spreadsheets, etc.
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const textContent = reader.result || "";
-      const lines = textContent.split("\n");
+      const rawText = reader.result || "";
       const language = detectLanguageFromFilename(name);
+      const lines = rawText.split("\n");
+      const estimatedTokens = estimateTokens(rawText);
+      const isLargeFile = estimatedTokens > LARGE_FILE_TOKEN_THRESHOLD;
 
       resolve({
         id,
         name,
         size,
-        formattedSize: formatFileSize(size),
-        type,
+        formattedSize,
+        type: type || "text/plain",
         extension,
         isImage: false,
-        textContent,
+        isLargeFile,
+        estimatedTokens,
+        textContent: rawText,
         language,
         linesCount: lines.length,
-        snippet: textContent.slice(0, 300),
+        snippet: rawText.slice(0, 300),
       });
     };
     reader.onerror = (err) => reject(new Error(`Failed to read document file "${name}": ${err.message}`));
@@ -140,10 +360,13 @@ export function extractFileKnowledgeEntities(fileData, sessionId = "") {
   const types = isImage ? ["File", "Image"] : ["File", "Document"];
 
   let desc = `Uploaded ${isImage ? "image" : "document"} "${cleanName}" (${fileData.formattedSize || formatFileSize(fileData.size)}).`;
+  if (fileData.pageCount) {
+    desc += ` Contains ${fileData.pageCount} page(s).`;
+  }
   if (!isImage && fileData.textContent) {
     const lines = fileData.textContent.split("\n");
     const preview = fileData.textContent.slice(0, 200).replace(/\s+/g, " ");
-    desc += ` Contains ${lines.length} lines of ${fileData.language || "text"}. Excerpt: "${preview}..."`;
+    desc += ` Contains ${lines.length} lines of ${fileData.language || "text"}. Preview: "${preview}..."`;
   }
 
   const entity = {
@@ -158,6 +381,9 @@ export function extractFileKnowledgeEntities(fileData, sessionId = "") {
       type: fileData.type,
       extension: fileData.extension,
       isImage,
+      isLargeFile: Boolean(fileData.isLargeFile),
+      pageCount: fileData.pageCount || null,
+      estimatedTokens: fileData.estimatedTokens || null,
       language: fileData.language || null,
       linesCount: fileData.linesCount || null,
     },
@@ -179,7 +405,7 @@ export function extractFileKnowledgeEntities(fileData, sessionId = "") {
   }
 
   // 2. Relate code files to their language/framework
-  if (!isImage && fileData.language && fileData.language !== "text") {
+  if (!isImage && fileData.language && fileData.language !== "text" && fileData.language !== "pdf" && fileData.language !== "docx") {
     relations.push({
       source: cleanName,
       predicate: "USES",

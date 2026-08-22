@@ -1,6 +1,7 @@
 /**
  * Grep Tool for ChatGemma
- * Searches with regular expressions and pattern matching across conversation messages and history.
+ * Searches with regular expressions and pattern matching across conversation messages,
+ * attached documents (PDFs, DOCX, CSVs, Code), and history.
  */
 
 export const grepTool = {
@@ -8,18 +9,22 @@ export const grepTool = {
   displayName: "Grep Search",
   iconName: "FileSearch",
   description:
-    "Search using regular expressions or keyword patterns across current chat messages or all past chat sessions. Extracts matching lines, line numbers, and session context.",
+    "Search using regular expressions or keyword patterns across conversation messages or any attached files (PDFs, docs, code, txt, csv). Extracts matching line numbers, page numbers, surrounding context lines, and file references.",
   parameters: {
     type: "OBJECT",
     properties: {
       pattern: {
         type: "STRING",
-        description: "The regex pattern or keyword to search for.",
+        description: "The regex pattern or keyword to search for (e.g. 'def calculate_profit', 'Q4 Revenue', 'TODO').",
+      },
+      fileName: {
+        type: "STRING",
+        description: "Optional filename or keyword to restrict search to a specific attached file (e.g. 'document.pdf', 'main.py').",
       },
       target: {
         type: "STRING",
         enum: ["current_chat", "all_chats"],
-        description: "Search scope: 'current_chat' for active conversation, or 'all_chats' to search across all history.",
+        description: "Search scope: 'current_chat' for active conversation files & messages, or 'all_chats' across all history.",
       },
       caseSensitive: {
         type: "BOOLEAN",
@@ -28,11 +33,13 @@ export const grepTool = {
     },
     required: ["pattern"],
   },
-  renderSummary: (args) => `Grep: /${args.pattern || ""}/${args.caseSensitive ? "" : "i"}`,
+  renderSummary: (args) =>
+    `Grep: /${args.pattern || ""}/${args.caseSensitive ? "" : "i"}${args.fileName ? ` in "${args.fileName}"` : ""}`,
 
   async execute(args, context = {}) {
     const patternStr = (args.pattern || "").trim();
     const target = args.target || "current_chat";
+    const filterFileName = (args.fileName || "").trim().toLowerCase();
     const caseSensitive = Boolean(args.caseSensitive);
 
     if (!patternStr) {
@@ -71,46 +78,71 @@ export const grepTool = {
 
       for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
         const msg = messages[msgIdx];
-        const content = msg.content || "";
-        const lines = content.split("\n");
 
-        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-          const line = lines[lineNum];
-          // Reset regex state
-          regex.lastIndex = 0;
-          if (regex.test(line)) {
-            matches.push({
-              sessionTitle,
-              sessionId: session.id,
-              role: msg.role,
-              messageIndex: msgIdx + 1,
-              lineNumber: lineNum + 1,
-              lineContent: line.trim(),
-              timestamp: msg.timestamp || "",
-            });
+        // 1. Search in message content if not specifically filtering for a file
+        if (!filterFileName) {
+          const content = msg.content || "";
+          const lines = content.split("\n");
+
+          for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+            const line = lines[lineNum];
+            regex.lastIndex = 0;
+            if (regex.test(line)) {
+              matches.push({
+                sessionTitle,
+                sessionId: session.id,
+                role: msg.role,
+                messageIndex: msgIdx + 1,
+                lineNumber: lineNum + 1,
+                lineContent: line.trim(),
+                timestamp: msg.timestamp || "",
+              });
+            }
           }
         }
 
-        // Also search inside attached files in this message
+        // 2. Search inside attached files in this message
         if (Array.isArray(msg.files)) {
           for (const file of msg.files) {
-            if (!file.isImage && file.textContent) {
-              const fileLines = file.textContent.split("\n");
-              for (let fLineIdx = 0; fLineIdx < fileLines.length; fLineIdx++) {
-                const fLine = fileLines[fLineIdx];
-                regex.lastIndex = 0;
-                if (regex.test(fLine)) {
-                  matches.push({
-                    sessionTitle,
-                    sessionId: session.id,
-                    role: msg.role,
-                    fileName: file.name,
-                    fileId: file.id,
-                    lineNumber: fLineIdx + 1,
-                    lineContent: fLine.trim(),
-                    timestamp: msg.timestamp || "",
-                  });
-                }
+            if (file.isImage || !file.textContent) continue;
+
+            if (filterFileName && !file.name.toLowerCase().includes(filterFileName)) {
+              continue;
+            }
+
+            const fileLines = file.textContent.split("\n");
+            let currentPage = 1;
+
+            for (let fLineIdx = 0; fLineIdx < fileLines.length; fLineIdx++) {
+              const fLine = fileLines[fLineIdx];
+
+              // Track page boundaries for PDFs
+              const pageMatch = fLine.match(/^---\s*Page\s*(\d+)\s*---/i);
+              if (pageMatch) {
+                currentPage = parseInt(pageMatch[1], 10);
+              }
+
+              regex.lastIndex = 0;
+              if (regex.test(fLine)) {
+                // Surrounding context line before and after
+                const prevLine = fLineIdx > 0 ? fileLines[fLineIdx - 1].trim() : "";
+                const nextLine = fLineIdx < fileLines.length - 1 ? fileLines[fLineIdx + 1].trim() : "";
+
+                matches.push({
+                  sessionTitle,
+                  sessionId: session.id,
+                  role: msg.role,
+                  fileName: file.name,
+                  fileId: file.id,
+                  pageNumber: file.pageCount ? currentPage : undefined,
+                  lineNumber: fLineIdx + 1,
+                  lineContent: fLine.trim(),
+                  contextBefore: prevLine || undefined,
+                  contextAfter: nextLine || undefined,
+                  timestamp: msg.timestamp || "",
+                });
+
+                if (matches.length >= 60) break;
               }
             }
           }
@@ -120,6 +152,7 @@ export const grepTool = {
 
     return {
       pattern: patternStr,
+      fileName: filterFileName || undefined,
       target,
       caseSensitive,
       totalMatches: matches.length,
