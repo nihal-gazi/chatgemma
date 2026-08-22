@@ -8,13 +8,14 @@
 
 import { knowledgeGraphInstance } from "../../services/knowledgeGraph.js";
 import { getMutatedPredicate, arePredicatesIsomorphic, computeSemanticSimilarity } from "../../utils/similarity.js";
+import { synthesizeBrainstormWithGemma } from "../../services/brainstormSynthesizer.js";
 
 export const brainstormIdeaTool = {
   name: "brainstorm_idea",
   displayName: "KG Idea Brainstormer",
   iconName: "Sparkles",
   description:
-    "Brainstorms novel, non-obvious ideas and breakthrough hypotheses using Knowledge Graph structural reasoning: (1) Predicate Swapping (mutating edge relationships to form counter-factual hypotheses) and (2) Isomorphic Mapping (discovering structural analogies across distant domains).",
+    "Brainstorms novel, non-obvious ideas and breakthrough hypotheses using Knowledge Graph structural reasoning: (1) Predicate Swapping (mutating edge relationships to form counter-factual hypotheses) and (2) Isomorphic Mapping (discovering structural analogies across distant domains). Directly calls Gemma to synthesize a polished, deep proposal with full graph connection provenance.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -50,6 +51,9 @@ export const brainstormIdeaTool = {
     }
 
     const kgService = context.knowledgeGraph || knowledgeGraphInstance;
+    const apiKey = context.apiKey || context.settings?.apiKey;
+    const modelId = context.modelId || context.settings?.modelId;
+    const signal = context.signal;
 
     // 1. Anchor Extraction: Look up entities in Knowledge Graph matching keywords in prompt
     const searchResult = kgService.search(rawPrompt, { depth: 2, limit: 15 });
@@ -93,32 +97,48 @@ export const brainstormIdeaTool = {
       const baseTripleStr = `[${subjectName}] ----[${selectedTriple.predicate}]---> [${objectName}]`;
       const mutatedTripleStr = `[${subjectName}] ----[${mutatedPredicate}]---> [${objectName}]`;
 
-      const ideationChallenge = `What if ${subjectName} ${mutatedPredicate.toLowerCase().replace(/_/g, " ")} ${objectName}? Explore how a physical, technological, or organizational mechanism could make this counter-factual relationship viable and advantageous.`;
+      const graphConnection = {
+        technique: "predicate_swap",
+        baseFact: baseTripleStr,
+        mutatedRelation: mutatedTripleStr,
+        subject: subjectName,
+        originalPredicate: selectedTriple.predicate,
+        mutatedPredicate,
+        object: objectName,
+        rationale: explanation,
+        summary: `Mutated Knowledge Graph edge from "${baseTripleStr}" to "${mutatedTripleStr}".`,
+      };
+
+      // Call Gemma to synthesize the polished idea from the mutated relationship
+      const polishedIdea = await synthesizeBrainstormWithGemma(
+        {
+          prompt: rawPrompt,
+          technique: "predicate_swap",
+          baseTriple: {
+            subject: subjectName,
+            predicate: selectedTriple.predicate,
+            object: objectName,
+            representation: baseTripleStr,
+          },
+          mutation: {
+            subject: subjectName,
+            mutatedPredicate,
+            mutationType,
+            object: objectName,
+            representation: mutatedTripleStr,
+            explanation,
+          },
+        },
+        { apiKey, modelId, signal }
+      );
 
       return {
         status: "success",
         technique: "predicate_swap",
         topic: rawPrompt,
-        anchorEntity: subjectName,
-        baseTriple: {
-          subject: subjectName,
-          predicate: selectedTriple.predicate,
-          object: objectName,
-          representation: baseTripleStr,
-        },
-        mutation: {
-          mutatedPredicate,
-          mutationType,
-          representation: mutatedTripleStr,
-          explanation,
-        },
-        ideationChallenge,
-        suggestedDirections: [
-          `Reverse-engineering: What underlying physics, logic, or protocol enables [${subjectName}] to [${mutatedPredicate}] [${objectName}]?`,
-          `Value Proposition: In what edge cases or breakthrough scenarios is this inverted behavior superior to standard behavior?`,
-          `Hybrid Model: Can the system dynamically switch between [${selectedTriple.predicate}] and [${mutatedPredicate}] based on environmental triggers?`,
-        ],
-        summary: `Mutated base relation from "${baseTripleStr}" to "${mutatedTripleStr}".`,
+        graphConnection,
+        polishedIdea,
+        summary: `Brainstormed: "${polishedIdea.title}" via Predicate Swapping (${baseTripleStr} -> ${mutatedTripleStr}).`,
       };
     }
 
@@ -160,56 +180,103 @@ export const brainstormIdeaTool = {
       // If no distant isomorphic match exists, fall back cleanly to Predicate Swap
       if (!candidateAnalogy) {
         const { mutatedPredicate, mutationType, explanation } = getMutatedPredicate(primaryTriple.predicate);
+        const baseTripleStr = `[${primaryTriple.sourceName}] ----[${primaryTriple.predicate}]---> [${primaryTriple.targetName}]`;
+        const mutatedTripleStr = `[${primaryTriple.sourceName}] ----[${mutatedPredicate}]---> [${primaryTriple.targetName}]`;
+
+        const graphConnection = {
+          technique: "predicate_swap",
+          fallbackNotice: "No distant isomorphic cross-domain subgraph found in graph; fell back to edge mutation.",
+          baseFact: baseTripleStr,
+          mutatedRelation: mutatedTripleStr,
+          subject: primaryTriple.sourceName,
+          originalPredicate: primaryTriple.predicate,
+          mutatedPredicate,
+          object: primaryTriple.targetName,
+          rationale: explanation,
+          summary: `Mutated Knowledge Graph edge from "${baseTripleStr}" to "${mutatedTripleStr}".`,
+        };
+
+        const polishedIdea = await synthesizeBrainstormWithGemma(
+          {
+            prompt: rawPrompt,
+            technique: "predicate_swap",
+            baseTriple: {
+              subject: primaryTriple.sourceName,
+              predicate: primaryTriple.predicate,
+              object: primaryTriple.targetName,
+              representation: baseTripleStr,
+            },
+            mutation: {
+              subject: primaryTriple.sourceName,
+              mutatedPredicate,
+              mutationType,
+              object: primaryTriple.targetName,
+              representation: mutatedTripleStr,
+              explanation,
+            },
+          },
+          { apiKey, modelId, signal }
+        );
+
         return {
           status: "success",
           technique: "predicate_swap",
           fallbackNotice: "No distant isomorphic cross-domain subgraph found in graph; fell back to edge mutation.",
           topic: rawPrompt,
-          baseTriple: {
-            subject: primaryTriple.sourceName,
-            predicate: primaryTriple.predicate,
-            object: primaryTriple.targetName,
-          },
-          mutation: {
-            mutatedPredicate,
-            mutationType,
-            explanation,
-          },
-          ideationChallenge: `What if [${primaryTriple.sourceName}] ${mutatedPredicate.toLowerCase().replace(/_/g, " ")} [${primaryTriple.targetName}]?`,
-          summary: `Generated edge mutation hypothesis for [${primaryTriple.sourceName}].`,
+          graphConnection,
+          polishedIdea,
+          summary: `Brainstormed: "${polishedIdea.title}" via fallback Predicate Swapping.`,
         };
       }
 
       const domain1Mapping = `[${primaryTriple.sourceName}] ----[${primaryTriple.predicate}]---> [${primaryTriple.targetName}] (${sourceDomainType})`;
       const domain2Mapping = `[${candidateAnalogy.sourceName}] ----[${candidateAnalogy.predicate}]---> [${candidateAnalogy.targetName}] (${candidateAnalogy.domain})`;
 
+      const structuralMappingMatrix = {
+        [`${primaryTriple.sourceName} (${sourceDomainType})`]: `${candidateAnalogy.sourceName} (${candidateAnalogy.domain})`,
+        [`${primaryTriple.predicate}`]: `${candidateAnalogy.predicate}`,
+        [`${primaryTriple.targetName}`]: `${candidateAnalogy.targetName}`,
+      };
+
+      const graphConnection = {
+        technique: "isomorphic_mapping",
+        sourceDomain: sourceDomainType,
+        sourceSubgraph: domain1Mapping,
+        analogousDomain: candidateAnalogy.domain,
+        analogousSubgraph: domain2Mapping,
+        mappingMatrix: structuralMappingMatrix,
+        similarityScore: candidateAnalogy.similarityScore,
+        summary: `Mapped structural analogy from [${primaryTriple.sourceName}] in ${sourceDomainType} to [${candidateAnalogy.sourceName}] in ${candidateAnalogy.domain}.`,
+      };
+
+      // Call Gemma to synthesize the cross-domain principle transfer into a polished idea
+      const polishedIdea = await synthesizeBrainstormWithGemma(
+        {
+          prompt: rawPrompt,
+          technique: "isomorphic_mapping",
+          sourceDomain: {
+            name: sourceDomainType,
+            subgraph: domain1Mapping,
+            coreConcept: primaryTriple.sourceName,
+          },
+          analogousDomain: {
+            name: candidateAnalogy.domain,
+            subgraph: domain2Mapping,
+            analogousConcept: candidateAnalogy.sourceName,
+            similarityScore: candidateAnalogy.similarityScore,
+          },
+          structuralMappingMatrix,
+        },
+        { apiKey, modelId, signal }
+      );
+
       return {
         status: "success",
         technique: "isomorphic_mapping",
         topic: rawPrompt,
-        sourceDomain: {
-          name: sourceDomainType,
-          subgraph: domain1Mapping,
-          coreConcept: primaryTriple.sourceName,
-        },
-        analogousDomain: {
-          name: candidateAnalogy.domain,
-          subgraph: domain2Mapping,
-          analogousConcept: candidateAnalogy.sourceName,
-          similarityScore: candidateAnalogy.similarityScore,
-        },
-        structuralMappingMatrix: {
-          [`${primaryTriple.sourceName} (${sourceDomainType})`]: `${candidateAnalogy.sourceName} (${candidateAnalogy.domain})`,
-          [`${primaryTriple.predicate}`]: `${candidateAnalogy.predicate}`,
-          [`${primaryTriple.targetName}`]: `${candidateAnalogy.targetName}`,
-        },
-        ideationChallenge: `Map principles and mechanisms from [${candidateAnalogy.sourceName}] in ${candidateAnalogy.domain} onto [${primaryTriple.sourceName}] in ${sourceDomainType}. What secondary properties (e.g. self-healing, distributed consensus, or adaptation) can be imported?`,
-        suggestedDirections: [
-          `Mechanism Import: What unmapped mechanisms exist in ${candidateAnalogy.domain} that can be translated into ${sourceDomainType}?`,
-          `Failure Mode Translation: How does ${candidateAnalogy.sourceName} handle extreme stress or edge cases in its domain?`,
-          `Novel Synthesis: Formulate a hybrid architecture that combines properties of both domains.`,
-        ],
-        summary: `Mapped structural analogy from ${sourceDomainType} to ${candidateAnalogy.domain}.`,
+        graphConnection,
+        polishedIdea,
+        summary: `Brainstormed: "${polishedIdea.title}" via Isomorphic Mapping (${sourceDomainType} <-> ${candidateAnalogy.domain}).`,
       };
     }
 

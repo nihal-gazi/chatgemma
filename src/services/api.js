@@ -295,8 +295,6 @@ export class GemmaApiService {
     executionContext = {}
   ) {
     this.cancelRequest();
-    this.abortController = new AbortController();
-
     const cleanKey = (this.apiKey || CONFIG.defaultApiKey || "").trim().replace(/^["']|["']$/g, "");
 
     if (!cleanKey) {
@@ -307,6 +305,13 @@ export class GemmaApiService {
     }
 
     const rawModelName = this.modelConfig.model;
+    const enrichedContext = {
+      ...executionContext,
+      apiKey: cleanKey,
+      modelId: rawModelName,
+      signal: this.abortController.signal,
+      apiService: this,
+    };
     const thinkingLevel = this.modelConfig.thinkingLevel || "HIGH";
     const endpoint = `${CONFIG.apiBaseUrl}/${rawModelName}:streamGenerateContent?key=${encodeURIComponent(
       cleanKey
@@ -717,7 +722,7 @@ PROTOCOL:
         for (const call of pendingCustomFunctionCalls) {
           console.log(`%c[ChatGemma][Executing Custom Tool: ${call.name}]`, "color: #d97706; font-weight: bold;", call.args);
 
-          const toolResponse = await toolRegistry.execute(call.name, call.args, executionContext);
+          const toolResponse = await toolRegistry.execute(call.name, call.args, enrichedContext);
 
           const completedCall = {
             ...call,
