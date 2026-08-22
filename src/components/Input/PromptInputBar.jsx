@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Plus, ArrowUp, Square, Mic, X, FileText, ImageIcon, FileCode } from "../Icons/index.jsx";
 import ModelSelector from "./ModelSelector.jsx";
+import CooldownPill from "../Common/CooldownPill.jsx";
 import { useChat } from "../../context/ChatContext.jsx";
 import { isMobileDevice, processUploadedFile } from "../../utils/index.js";
 
@@ -207,6 +208,7 @@ export default function PromptInputBar() {
 
           {!isMultiLine && (
             <div className="input-right-actions">
+              <CooldownPill />
               <ModelSelector />
 
               <button
@@ -259,6 +261,7 @@ export default function PromptInputBar() {
             </div>
 
             <div className="toolbar-right">
+              <CooldownPill />
               <ModelSelector />
 
               <button

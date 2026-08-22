@@ -3821,4 +3821,54 @@ input:checked + .slider:before {
   background: #3f4044;
 }
 
+/* ==========================================================================
+   8. Cooldown Timer Pill (Borderless)
+   ========================================================================== */
+
+.cooldown-timer-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: none !important;
+  outline: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: default;
+  user-select: none;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.15s ease;
+}
+
+.cooldown-timer-pill:hover {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+}
+
+.cooldown-icon {
+  color: #f59e0b;
+  flex-shrink: 0;
+  animation: spinSlow 8s linear infinite;
+}
+
+.cooldown-text {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
 

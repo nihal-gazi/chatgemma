@@ -29,6 +29,31 @@ export class ApiRateLimiter {
     this.cooldownUntil = 0; // Epoch timestamp in ms
     this.minCallSpacingMs = 800; // Minimum pause between consecutive requests to prevent micro-bursts
     this.lastCallTime = 0;
+    this.listeners = new Set();
+  }
+
+  /**
+   * Subscribe to rate limit & cooldown changes.
+   * @param {Function} listener
+   * @returns {Function} Unsubscribe callback
+   */
+  subscribe(listener) {
+    if (typeof listener === "function") {
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+    return () => {};
+  }
+
+  _notifyListeners() {
+    const stats = this.getStats();
+    for (const listener of this.listeners) {
+      try {
+        listener(stats);
+      } catch (err) {
+        console.error("[RateLimiter] Listener error:", err);
+      }
+    }
   }
 
   /**
@@ -57,8 +82,10 @@ export class ApiRateLimiter {
       totalCallsLogged: this.callHistory.length,
       callsLastMinute,
       cooldownRemainingMs: cooldownRemaining,
+      cooldownSeconds: Math.ceil(cooldownRemaining / 1000),
       isCoolingDown: cooldownRemaining > 0,
       lastCallTime: this.lastCallTime,
+      cooldownUntil: this.cooldownUntil,
     };
   }
 
@@ -67,6 +94,7 @@ export class ApiRateLimiter {
    */
   setCooldown(waitMs) {
     this.cooldownUntil = Math.max(this.cooldownUntil, Date.now() + waitMs);
+    this._notifyListeners();
   }
 
   /**
