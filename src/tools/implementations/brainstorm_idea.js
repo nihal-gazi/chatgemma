@@ -7,7 +7,11 @@
  */
 
 import { knowledgeGraphInstance } from "../../services/knowledgeGraph.js";
-import { getMutatedPredicate, arePredicatesIsomorphic, computeSemanticSimilarity } from "../../utils/similarity.js";
+import {
+  getMutatedPredicate,
+  arePredicatesIsomorphic,
+  extractSalientKeywords,
+} from "../../utils/similarity.js";
 import { synthesizeBrainstormWithGemma } from "../../services/brainstormSynthesizer.js";
 
 export const brainstormIdeaTool = {
@@ -15,7 +19,7 @@ export const brainstormIdeaTool = {
   displayName: "KG Idea Brainstormer",
   iconName: "Sparkles",
   description:
-    "Brainstorms novel, non-obvious ideas and breakthrough hypotheses using Knowledge Graph structural reasoning: (1) Predicate Swapping (mutating edge relationships to form counter-factual hypotheses) and (2) Isomorphic Mapping (discovering structural analogies across distant domains). Directly calls Gemma to synthesize a polished, deep proposal with full graph connection provenance.",
+    "Brainstorms novel, non-obvious ideas and breakthrough hypotheses using Knowledge Graph structural reasoning: (1) Predicate Swapping (mutating edge relationships to form counter-factual hypotheses) and (2) Isomorphic Mapping (discovering structural analogies across distant domains). Directly calls Gemma to synthesize a polished, deep proposal with full graph connection provenance. If the graph lacks data, returns an agentic SEARCH_AND_INDEX directive with suggested queries.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -55,19 +59,66 @@ export const brainstormIdeaTool = {
     const modelId = context.modelId || context.settings?.modelId;
     const signal = context.signal;
 
-    // 1. Anchor Extraction: Look up entities in Knowledge Graph matching keywords in prompt
-    const searchResult = kgService.search(rawPrompt, { depth: 2, limit: 15 });
-    const matchedEntities = searchResult.matchedEntities || [];
-    const connectedTriples = searchResult.directTriples || [];
+    // 1. Extract Salient Keywords & Named Phrases from Prompt (filtering stop words)
+    const { phrases, keywords } = extractSalientKeywords(rawPrompt);
 
-    // 2. Knowledge Density Guardrail: Check if graph has enough context
+    // 2. Targeted Anchor Extraction in Knowledge Graph
+    let matchedEntities = [];
+    let connectedTriples = [];
+
+    // Search for quoted or capitalized named phrases first
+    for (const phrase of phrases) {
+      const res = kgService.search(phrase, { depth: 2, limit: 10 });
+      if (res.matchedEntities.length > 0) {
+        matchedEntities.push(...res.matchedEntities);
+        connectedTriples.push(...res.directTriples);
+      }
+    }
+
+    // Search for individual salient keywords if phrases had no match
+    if (matchedEntities.length === 0) {
+      for (const kw of keywords) {
+        const res = kgService.search(kw, { depth: 2, limit: 5 });
+        if (res.matchedEntities.length > 0) {
+          matchedEntities.push(...res.matchedEntities);
+          connectedTriples.push(...res.directTriples);
+        }
+      }
+    }
+
+    // Deduplicate matched entities and triples
+    const entityMap = new Map();
+    for (const e of matchedEntities) entityMap.set(e.id, e);
+    matchedEntities = Array.from(entityMap.values());
+
+    const tripleMap = new Map();
+    for (const t of connectedTriples) {
+      const key = `${t.sourceName}:${t.predicate}:${t.targetName}`;
+      tripleMap.set(key, t);
+    }
+    connectedTriples = Array.from(tripleMap.values());
+
+    // 3. Knowledge Density Guardrail: Check if graph actually has domain concepts
     if (matchedEntities.length === 0 || connectedTriples.length === 0) {
+      const missingTopics =
+        phrases.length > 0 ? phrases : keywords.slice(0, 4);
+
+      const suggestedSearchQueries = missingTopics.map(
+        (topic) => `${topic} core thesis principles mechanisms`
+      );
+
       return {
-        status: "not_enough_knowledge",
+        status: "insufficient_knowledge",
+        actionRequired: "SEARCH_AND_INDEX_THEN_RETRY",
         topic: rawPrompt,
-        matchedEntitiesCount: matchedEntities.length,
-        connectedTriplesCount: connectedTriples.length,
-        message: `Not enough knowledge graph nodes or connections found for "${rawPrompt}". Please provide more facts, entities, or context in the Knowledge Graph to enable structural brainstorming.`,
+        missingTopics,
+        instruction: `The Knowledge Graph currently lacks entities and factual connections for: ${missingTopics
+          .map((t) => `"${t}"`)
+          .join(", ")}.\n\nTo construct a high-impact, grounded brainstorm:\n1. Use Google Search to look up these topics: ${suggestedSearchQueries
+          .map((q) => `"${q}"`)
+          .join(", ")}.\n2. Call 'knowledge_graph_write' to index the key entities, principles, and mechanisms into the Knowledge Graph.\n3. Re-run 'brainstorm_idea' with the prompt to generate the structurally grounded synthesis.`,
+        suggestedSearchQueries,
+        summary: `Knowledge Graph needs facts on ${missingTopics.join(", ")}. Prompting agent to search web, index into KG, and retry.`,
       };
     }
 
@@ -79,7 +130,7 @@ export const brainstormIdeaTool = {
       chosenTechnique = connectedTriples.length >= 2 && distinctTypes.size >= 2 ? "isomorphic_mapping" : "predicate_swap";
     }
 
-    // 3. Execution: Predicate Swapping (Edge Mutation)
+    // 4. Execution: Predicate Swapping (Edge Mutation)
     if (chosenTechnique === "predicate_swap") {
       // Pick the primary triple with an invertible predicate
       let selectedTriple = connectedTriples[0];
@@ -142,34 +193,35 @@ export const brainstormIdeaTool = {
       };
     }
 
-    // 4. Execution: Isomorphic Mapping (Cross-Domain Analogy)
+    // 5. Execution: Isomorphic Mapping (Cross-Domain Analogy)
     if (chosenTechnique === "isomorphic_mapping") {
-      // Form source domain subgraph path (A -> B -> C or A -> B)
+      // Form source domain subgraph path (A -> B)
       const primaryTriple = connectedTriples[0];
       const sourceDomainType = matchedEntities[0]?.types?.[0] || "Concept";
 
-      // Search all relations in KG for a topologically matching subgraph in a different entity type or domain
+      // Search all relations in KG for a topologically matching subgraph in a strictly different entity type or domain
       const allRelations = kgService.relations.filter((r) => r.isActive !== false);
       let candidateAnalogy = null;
 
       for (const rel of allRelations) {
-        // Must belong to a different entity or domain
         const relSource = kgService.entities.get(rel.sourceId);
         const relTarget = kgService.entities.get(rel.targetId);
+        const candidateDomain = relSource?.types?.[0] || "Domain 2";
 
         const isDistantDomain =
           rel.sourceId !== primaryTriple.sourceId &&
           rel.targetId !== primaryTriple.targetId &&
-          relSource?.name !== primaryTriple.sourceName;
+          relSource?.name !== primaryTriple.sourceName &&
+          candidateDomain !== sourceDomainType; // Must belong to a DIFFERENT domain
 
         if (isDistantDomain) {
           const sim = arePredicatesIsomorphic(primaryTriple.predicate, rel.predicate);
-          if (sim > 0.4 || targetDomain) {
+          if (sim >= 0.45 || (targetDomain && candidateDomain.toLowerCase().includes(targetDomain.toLowerCase()) && sim >= 0.3)) {
             candidateAnalogy = {
               sourceName: rel.sourceName || relSource?.name || rel.sourceId,
               predicate: rel.predicate,
               targetName: rel.targetName || relTarget?.name || rel.targetId,
-              domain: relSource?.types?.[0] || "Domain 2",
+              domain: candidateDomain,
               similarityScore: sim,
             };
             break;
@@ -185,7 +237,7 @@ export const brainstormIdeaTool = {
 
         const graphConnection = {
           technique: "predicate_swap",
-          fallbackNotice: "No distant isomorphic cross-domain subgraph found in graph; fell back to edge mutation.",
+          fallbackNotice: "No distant cross-domain isomorphic subgraph found in graph; fell back to edge mutation.",
           baseFact: baseTripleStr,
           mutatedRelation: mutatedTripleStr,
           subject: primaryTriple.sourceName,
@@ -221,7 +273,7 @@ export const brainstormIdeaTool = {
         return {
           status: "success",
           technique: "predicate_swap",
-          fallbackNotice: "No distant isomorphic cross-domain subgraph found in graph; fell back to edge mutation.",
+          fallbackNotice: "No distant cross-domain isomorphic subgraph found in graph; fell back to edge mutation.",
           topic: rawPrompt,
           graphConnection,
           polishedIdea,
@@ -281,7 +333,7 @@ export const brainstormIdeaTool = {
     }
 
     return {
-      status: "not_enough_knowledge",
+      status: "insufficient_knowledge",
       message: `Could not generate brainstorming hypothesis for "${rawPrompt}".`,
     };
   },

@@ -167,15 +167,24 @@ Immediate pilot project, experiment, or simulation to validate the concept.`;
     }
 
     const data = await res.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const textParts = parts
+      .filter((p) => p.text && !p.thought)
+      .map((p) => p.text)
+      .join("\n")
+      .trim();
+
+    const rawText = textParts || parts.map((p) => p.text || "").join("\n").trim();
 
     // Extract title if present
-    const titleMatch = rawText.match(/###\s*💡\s*Breakthrough Concept:\s*(.+)/i) || rawText.match(/###\s*(.+)/);
+    const titleMatch =
+      rawText.match(/###\s*💡\s*Breakthrough Concept:\s*(.+)/i) ||
+      rawText.match(/###\s*(.+)/);
     const title = titleMatch ? titleMatch[1].trim() : "Breakthrough Innovation Proposal";
 
     return {
       title,
-      synthesis: rawText.trim(),
+      synthesis: rawText,
       model: rawModel,
       connectionSummary,
     };

@@ -236,3 +236,67 @@ export function getMutatedPredicate(predicate = "") {
     explanation: `No direct antonym found for "${predicate}". Selected orthogonal transformation "${fallback}".`,
   };
 }
+
+// Common English stop words and conversational filler words
+export const STOP_WORDS = new Set([
+  "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "aren't",
+  "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by",
+  "can", "can't", "cannot", "could", "couldn't", "did", "didn't", "do", "does", "doesn't", "doing",
+  "don't", "down", "during", "each", "few", "for", "from", "further", "had", "hadn't", "has", "hasn't",
+  "have", "haven't", "having", "he", "he'd", "he'll", "he's", "her", "here", "hers", "herself", "him",
+  "himself", "his", "how", "how's", "i", "i'd", "i'll", "i'm", "i've", "if", "in", "into", "is", "isn't",
+  "it", "it's", "its", "itself", "let's", "me", "more", "most", "mustn't", "my", "myself", "no", "nor",
+  "not", "of", "off", "on", "once", "only", "or", "other", "ought", "our", "ours", "ourselves", "out",
+  "over", "own", "same", "shan't", "she", "she'd", "she'll", "she's", "should", "shouldn't", "so", "some",
+  "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there",
+  "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "to",
+  "too", "under", "until", "up", "very", "was", "wasn't", "we", "we'd", "we'll", "we're", "we've", "were",
+  "weren't", "what", "what's", "when", "when's", "where", "where's", "which", "while", "who", "who's",
+  "whom", "why", "why's", "with", "won't", "would", "wouldn't", "you", "you'd", "you'll", "you're", "you've",
+  "your", "yours", "yourself", "yourselves", "synthesize", "specifically", "explore", "lead", "leading",
+  "field", "idea", "thesis", "premise", "apply", "used", "using", "could", "leads", "lead"
+]);
+
+/**
+ * Extracts key named entities and salient keywords from a prompt, filtering out conversational fluff & stop words.
+ * Also extracts quoted phrases (e.g. 'Tafahut al-Falasifah', 'Brilliant Blunders').
+ *
+ * @param {string} text
+ * @returns {{ phrases: string[], keywords: string[], rawTerms: string[] }}
+ */
+export function extractSalientKeywords(text = "") {
+  if (!text) return { phrases: [], keywords: [], rawTerms: [] };
+
+  // 1. Extract quoted terms (e.g. 'Tafahut al-Falasifah', "Brilliant Blunders")
+  const phrases = [];
+  const quoteRegex = /(?:^|[\s(])['"‘“]([^'"’”\n]+)['"’”]/g;
+  let match;
+  while ((match = quoteRegex.exec(text)) !== null) {
+    const extracted = match[1].trim();
+    if (extracted.length > 2 && extracted.length < 80 && !extracted.includes(")")) {
+      phrases.push(extracted);
+    }
+  }
+
+  // 2. Extract capitalized multi-word phrases (e.g. Al-Ghazali, Machine Learning)
+  const capRegex = /\b([A-Z][a-zA-Z0-9_-]+(?:\s+[A-Z][a-zA-Z0-9_-]+)*)\b/g;
+  while ((match = capRegex.exec(text)) !== null) {
+    const p = match[1].trim();
+    if (p.length > 2 && !STOP_WORDS.has(p.toLowerCase()) && !phrases.includes(p)) {
+      phrases.push(p);
+    }
+  }
+
+  // 3. Extract individual salient tokens
+  const words = text
+    .replace(/[^\w\s-]/g, " ")
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w.toLowerCase()));
+
+  const keywords = Array.from(new Set(words));
+  const rawTerms = Array.from(new Set([...phrases, ...keywords]));
+
+  return { phrases, keywords, rawTerms };
+}
+
