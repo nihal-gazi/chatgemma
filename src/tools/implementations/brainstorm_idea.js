@@ -36,16 +36,21 @@ export const brainstormIdeaTool = {
         type: "STRING",
         description: "Optional specific domain to draw cross-field analogies from (e.g. 'Biology', 'Quantum Physics', 'Urban Architecture', 'Economics').",
       },
+      seed: {
+        type: "INTEGER",
+        description: "Optional random seed number (e.g. 1, 2, 42, 101, 2026) to explore diverse idea variations. Changing the seed alters graph traversal paths, edge mutation choices, and LLM creative synthesis angles.",
+      },
     },
     required: ["prompt"],
   },
   renderSummary: (args) =>
-    `Brainstorm: "${args.prompt || ""}" (${args.technique || "auto"})`,
+    `Brainstorm: "${args.prompt || ""}" (${args.technique || "auto"}${args.seed !== undefined ? `, seed: ${args.seed}` : ""})`,
 
   async execute(args, context = {}) {
     const rawPrompt = (args.prompt || "").trim();
     const technique = args.technique || "auto";
     const targetDomain = (args.targetDomain || "").trim();
+    const seed = args.seed !== undefined ? Number(args.seed) || 0 : Math.floor(Math.random() * 100000);
 
     if (!rawPrompt) {
       return {
@@ -132,16 +137,16 @@ export const brainstormIdeaTool = {
 
     // 4. Execution: Predicate Swapping (Edge Mutation)
     if (chosenTechnique === "predicate_swap") {
-      // Pick the primary triple with an invertible predicate
-      let selectedTriple = connectedTriples[0];
-      for (const triple of connectedTriples) {
-        if (triple.predicate && triple.predicate !== "ATTACHED_TO" && triple.predicate !== "ASSOCIATED_WITH") {
-          selectedTriple = triple;
-          break;
-        }
-      }
+      // Pick the primary triple with an invertible predicate, varied by seed
+      const candidateTriples = connectedTriples.filter(
+        (t) => t.predicate && t.predicate !== "ATTACHED_TO" && t.predicate !== "ASSOCIATED_WITH"
+      );
+      const selectedTriple =
+        candidateTriples.length > 0
+          ? candidateTriples[Math.abs(seed) % candidateTriples.length]
+          : connectedTriples[Math.abs(seed) % connectedTriples.length];
 
-      const { mutatedPredicate, mutationType, explanation } = getMutatedPredicate(selectedTriple.predicate);
+      const { mutatedPredicate, mutationType, explanation } = getMutatedPredicate(selectedTriple.predicate, seed);
       const subjectName = selectedTriple.sourceName;
       const objectName = selectedTriple.targetName;
 
@@ -180,28 +185,29 @@ export const brainstormIdeaTool = {
             explanation,
           },
         },
-        { apiKey, modelId, signal }
+        { apiKey, modelId, signal, seed }
       );
 
       return {
         status: "success",
         technique: "predicate_swap",
         topic: rawPrompt,
+        seedUsed: seed,
         graphConnection,
         polishedIdea,
-        summary: `Brainstormed: "${polishedIdea.title}" via Predicate Swapping (${baseTripleStr} -> ${mutatedTripleStr}).`,
+        summary: `Brainstormed: "${polishedIdea.title}" via Predicate Swapping (${baseTripleStr} -> ${mutatedTripleStr}) [Seed: ${seed}].`,
       };
     }
 
     // 5. Execution: Isomorphic Mapping (Cross-Domain Analogy)
     if (chosenTechnique === "isomorphic_mapping") {
-      // Form source domain subgraph path (A -> B)
-      const primaryTriple = connectedTriples[0];
+      // Pick source triple varied by seed
+      const primaryTriple = connectedTriples[Math.abs(seed) % connectedTriples.length];
       const sourceDomainType = matchedEntities[0]?.types?.[0] || "Concept";
 
-      // Search all relations in KG for a topologically matching subgraph in a strictly different entity type or domain
+      // Search all relations in KG for all topologically matching subgraphs in strictly different domains
       const allRelations = kgService.relations.filter((r) => r.isActive !== false);
-      let candidateAnalogy = null;
+      const candidateAnalogies = [];
 
       for (const rel of allRelations) {
         const relSource = kgService.entities.get(rel.sourceId);
@@ -217,21 +223,26 @@ export const brainstormIdeaTool = {
         if (isDistantDomain) {
           const sim = arePredicatesIsomorphic(primaryTriple.predicate, rel.predicate);
           if (sim >= 0.45 || (targetDomain && candidateDomain.toLowerCase().includes(targetDomain.toLowerCase()) && sim >= 0.3)) {
-            candidateAnalogy = {
+            candidateAnalogies.push({
               sourceName: rel.sourceName || relSource?.name || rel.sourceId,
               predicate: rel.predicate,
               targetName: rel.targetName || relTarget?.name || rel.targetId,
               domain: candidateDomain,
               similarityScore: sim,
-            };
-            break;
+            });
           }
         }
       }
 
+      // Pick analogy candidate based on seed
+      const candidateAnalogy =
+        candidateAnalogies.length > 0
+          ? candidateAnalogies[Math.abs(seed) % candidateAnalogies.length]
+          : null;
+
       // If no distant isomorphic match exists, fall back cleanly to Predicate Swap
       if (!candidateAnalogy) {
-        const { mutatedPredicate, mutationType, explanation } = getMutatedPredicate(primaryTriple.predicate);
+        const { mutatedPredicate, mutationType, explanation } = getMutatedPredicate(primaryTriple.predicate, seed);
         const baseTripleStr = `[${primaryTriple.sourceName}] ----[${primaryTriple.predicate}]---> [${primaryTriple.targetName}]`;
         const mutatedTripleStr = `[${primaryTriple.sourceName}] ----[${mutatedPredicate}]---> [${primaryTriple.targetName}]`;
 
@@ -267,7 +278,7 @@ export const brainstormIdeaTool = {
               explanation,
             },
           },
-          { apiKey, modelId, signal }
+          { apiKey, modelId, signal, seed }
         );
 
         return {
@@ -275,9 +286,10 @@ export const brainstormIdeaTool = {
           technique: "predicate_swap",
           fallbackNotice: "No distant cross-domain isomorphic subgraph found in graph; fell back to edge mutation.",
           topic: rawPrompt,
+          seedUsed: seed,
           graphConnection,
           polishedIdea,
-          summary: `Brainstormed: "${polishedIdea.title}" via fallback Predicate Swapping.`,
+          summary: `Brainstormed: "${polishedIdea.title}" via fallback Predicate Swapping [Seed: ${seed}].`,
         };
       }
 
@@ -319,16 +331,17 @@ export const brainstormIdeaTool = {
           },
           structuralMappingMatrix,
         },
-        { apiKey, modelId, signal }
+        { apiKey, modelId, signal, seed }
       );
 
       return {
         status: "success",
         technique: "isomorphic_mapping",
         topic: rawPrompt,
+        seedUsed: seed,
         graphConnection,
         polishedIdea,
-        summary: `Brainstormed: "${polishedIdea.title}" via Isomorphic Mapping (${sourceDomainType} <-> ${candidateAnalogy.domain}).`,
+        summary: `Brainstormed: "${polishedIdea.title}" via Isomorphic Mapping (${sourceDomainType} <-> ${candidateAnalogy.domain}) [Seed: ${seed}].`,
       };
     }
 

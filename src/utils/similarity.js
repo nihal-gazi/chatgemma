@@ -200,13 +200,14 @@ export function computeSemanticSimilarity(strA = "", strB = "") {
 /**
  * Finds the semantic opposite or mutated predicate for a given relationship.
  * @param {string} predicate - The base predicate (e.g. "ABSORBS", "BLOCKS", "USES")
+ * @param {number} [seed=0] - Optional seed to vary between antonyms and orthogonal transformations
  * @returns {{ mutatedPredicate: string, mutationType: "antonym" | "orthogonal", explanation: string }}
  */
-export function getMutatedPredicate(predicate = "") {
+export function getMutatedPredicate(predicate = "", seed = 0) {
   const norm = predicate.toUpperCase().replace(/\s+/g, "_");
 
-  // 1. Direct dictionary antonym
-  if (PREDICATE_INVERSIONS[norm]) {
+  // 1. Direct dictionary antonym (unless seed specifies an orthogonal variation)
+  if (PREDICATE_INVERSIONS[norm] && seed % 3 !== 2) {
     const inv = PREDICATE_INVERSIONS[norm];
     return {
       mutatedPredicate: inv,
@@ -216,24 +217,26 @@ export function getMutatedPredicate(predicate = "") {
   }
 
   // 2. Fuzzy match with known predicates
-  for (const [key, value] of Object.entries(PREDICATE_INVERSIONS)) {
-    if (computeSemanticSimilarity(norm, key) > 0.65) {
-      return {
-        mutatedPredicate: value,
-        mutationType: "antonym",
-        explanation: `Fuzzy matched "${predicate}" to "${key}", yielding inverse "${value}".`,
-      };
+  if (seed % 3 !== 2) {
+    for (const [key, value] of Object.entries(PREDICATE_INVERSIONS)) {
+      if (computeSemanticSimilarity(norm, key) > 0.65) {
+        return {
+          mutatedPredicate: value,
+          mutationType: "antonym",
+          explanation: `Fuzzy matched "${predicate}" to "${key}", yielding inverse "${value}".`,
+        };
+      }
     }
   }
 
-  // 3. Fallback: select an orthogonal transformative predicate
+  // 3. Fallback / Orthogonal Transformative variation with seed
   const hash = Math.abs(norm.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0));
-  const fallback = ORTHOGONAL_PREDICATES[hash % ORTHOGONAL_PREDICATES.length];
+  const fallback = ORTHOGONAL_PREDICATES[(hash + Math.abs(seed)) % ORTHOGONAL_PREDICATES.length];
 
   return {
     mutatedPredicate: fallback,
     mutationType: "orthogonal",
-    explanation: `No direct antonym found for "${predicate}". Selected orthogonal transformation "${fallback}".`,
+    explanation: `Selected orthogonal transformation "${fallback}" (Variation Seed: ${seed}).`,
   };
 }
 

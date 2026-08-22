@@ -34,7 +34,7 @@ export async function synthesizeBrainstormWithGemma(
     analogousDomain,
     structuralMappingMatrix,
   },
-  { apiKey, modelId, signal } = {}
+  { apiKey, modelId, signal, seed } = {}
 ) {
   const cleanKey = (apiKey || CONFIG.defaultApiKey || "").trim();
   const rawModel = CONFIG.resolveModelName(modelId || CONFIG.defaultModelId);
@@ -138,6 +138,7 @@ Immediate pilot project, experiment, or simulation to validate the concept.`;
     generationConfig: {
       temperature: 0.7,
       maxOutputTokens: 1800,
+      ...(seed !== undefined && !isNaN(Number(seed)) ? { seed: Number(seed) } : {}),
       thinkingConfig: {
         thinkingLevel: "MINIMAL",
       },
