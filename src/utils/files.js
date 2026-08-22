@@ -3,9 +3,21 @@
  */
 
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
 import mammoth from "mammoth";
 import { generateId } from "./helpers.js";
 import { estimateTokens } from "./tokens.js";
+
+// Configure GlobalWorkerOptions.workerSrc for pdfjs-dist
+if (pdfjsLib.GlobalWorkerOptions) {
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      pdfWorker ||
+      `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "6.2.108"}/pdf.worker.min.mjs`;
+  } catch {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "6.2.108"}/pdf.worker.min.mjs`;
+  }
+}
 
 // Token limit threshold beyond which full content is omitted from the raw turn prompt
 // to preserve the 16,000-token context budget. Tools (grep, file_search) are used to query large files.
@@ -75,6 +87,12 @@ export function detectLanguageFromFilename(filename = "") {
  */
 export async function extractTextFromPdf(arrayBuffer) {
   try {
+    if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        pdfWorker ||
+        `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "6.2.108"}/pdf.worker.min.mjs`;
+    }
+
     const loadingTask = pdfjsLib.getDocument({
       data: arrayBuffer,
       isEvalSupported: false,
