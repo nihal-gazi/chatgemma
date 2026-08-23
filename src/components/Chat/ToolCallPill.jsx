@@ -467,11 +467,11 @@ function BrainstormIdeaRenderer({ response }) {
     return (
       <div className="kg-results-container">
         <div className="kg-warning-banner">
-          <strong>Insufficient Knowledge in Graph:</strong> {response.summary || response.instruction}
+          <strong>Insufficient Knowledge in Graph</strong>: {response.summary || response.instruction}
         </div>
         {response.suggestedSearchQueries && (
           <div className="kg-section">
-            <div className="kg-section-subtitle">Suggested Search Queries</div>
+            <div className="kg-section-subtitle">Suggested Search Queries:</div>
             <div className="kg-type-tags">
               {response.suggestedSearchQueries.map((q, idx) => (
                 <span key={idx} className="kg-type-tag search-hint">
@@ -608,6 +608,7 @@ function BrainstormIdeaRenderer({ response }) {
       {/* 5. Verification Guidance Callout */}
       {verificationGuidance && (
         <div className="brainstorm-verify-banner">
+          <Sparkles size={14} className="verify-icon" />
           <span>{verificationGuidance}</span>
         </div>
       )}

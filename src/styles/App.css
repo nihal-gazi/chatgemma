@@ -1403,14 +1403,14 @@
 }
 
 /* ==========================================================================
-   Brainstorm Idea & KG Node Search Specialized GUI Tool Styles (Borderless)
+   Brainstorm Idea & KG Node Search Specialized GUI Tool Styles
    ========================================================================== */
 
 .brainstorm-gui-container,
 .node-search-gui-container {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .brainstorm-meta-bar {
@@ -1419,9 +1419,9 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-sm);
-  border: none;
 }
 
 .brainstorm-badge {
@@ -1433,27 +1433,30 @@
   gap: 4px;
   background: rgba(255, 255, 255, 0.04);
   color: var(--gemini-text-secondary);
-  border: none;
 }
 
 .brainstorm-badge.anchor {
   background: rgba(147, 197, 253, 0.12);
   color: #93c5fd;
+  border: 1px solid rgba(147, 197, 253, 0.25);
 }
 
 .brainstorm-badge.hops {
   background: rgba(192, 132, 252, 0.12);
   color: #d8b4fe;
+  border: 1px solid rgba(192, 132, 252, 0.25);
 }
 
 .brainstorm-badge.mutations {
   background: rgba(251, 191, 36, 0.12);
   color: #fcd34d;
+  border: 1px solid rgba(251, 191, 36, 0.25);
 }
 
 .brainstorm-badge.seed {
   background: rgba(52, 211, 153, 0.12);
   color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.25);
 }
 
 /* Mapped Keywords Resolution */
@@ -1470,16 +1473,17 @@
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 0.74rem;
-  background: rgba(255, 255, 255, 0.035);
-  border: none;
+  background: #111214;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .brainstorm-kw-chip.matched {
-  background: rgba(66, 133, 244, 0.1);
+  border-color: rgba(66, 133, 244, 0.3);
 }
 
 .brainstorm-kw-chip.unmatched {
-  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.05);
 }
 
 .kw-label {
@@ -1499,9 +1503,9 @@
 
 .kw-domain-badge {
   font-size: 0.64rem;
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--gemini-text-muted);
 }
 
@@ -1514,26 +1518,28 @@
 .brainstorm-traversal-list {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .brainstorm-hop-card {
   position: relative;
-  background: rgba(255, 255, 255, 0.025);
+  background: #111214;
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border: none;
 }
 
 .brainstorm-hop-card.mutated-hop {
-  background: rgba(251, 191, 36, 0.06);
+  border-left: 3px solid #fbbf24;
+  background: rgba(251, 191, 36, 0.03);
+  border-color: rgba(251, 191, 36, 0.2);
 }
 
 .brainstorm-hop-card.preserved-hop {
-  background: rgba(255, 255, 255, 0.025);
+  border-left: 3px solid rgba(255, 255, 255, 0.15);
 }
 
 .hop-index-badge {
@@ -1563,10 +1569,10 @@
   color: #fbbf24;
   font-weight: 700;
   font-family: var(--font-mono);
-  background: rgba(251, 191, 36, 0.15);
+  background: rgba(251, 191, 36, 0.12);
   padding: 2px 6px;
   border-radius: 3px;
-  border: none;
+  border: 1px solid rgba(251, 191, 36, 0.3);
   letter-spacing: 0.5px;
 }
 
@@ -1576,7 +1582,7 @@
 }
 
 .hop-mutation-tag code {
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.3);
   padding: 1px 4px;
   border-radius: 2px;
   font-family: var(--font-mono);
@@ -1585,11 +1591,11 @@
 .hop-mutation-reason {
   font-size: 0.72rem;
   color: #e2e8f0;
-  background: rgba(255, 255, 255, 0.035);
-  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 4px 8px;
   border-radius: 3px;
   line-height: 1.4;
-  border: none;
+  border-left: 2px solid #fbbf24;
   margin-top: 2px;
 }
 
@@ -1605,7 +1611,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-sm);
   padding: 5px 10px;
   color: var(--gemini-text-secondary);
@@ -1613,12 +1620,12 @@
   cursor: pointer;
   align-self: flex-start;
   transition: all 0.15s ease;
-  border: none;
 }
 
 .brainstorm-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--gemini-text-primary);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .brainstorm-original-list {
@@ -1626,9 +1633,9 @@
   flex-direction: column;
   gap: 4px;
   padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.25);
+  background: #0d0e10;
   border-radius: var(--radius-sm);
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .brainstorm-original-row {
@@ -1644,30 +1651,35 @@
   align-items: center;
   gap: 8px;
   background: rgba(147, 197, 253, 0.08);
+  border-left: 3px solid #60a5fa;
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   font-size: 0.76rem;
   color: #bfdbfe;
   font-weight: 500;
   line-height: 1.4;
-  border: none;
+}
+
+.brainstorm-verify-banner .verify-icon {
+  color: #60a5fa;
+  flex-shrink: 0;
 }
 
 /* KG Node Search GUI Group Cards */
 .node-search-groups {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .node-search-group-card {
-  background: rgba(255, 255, 255, 0.025);
+  background: #111214;
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border: none;
 }
 
 .node-search-kw-title {
@@ -1699,16 +1711,16 @@
   padding: 3px 8px;
   border-radius: 4px;
   font-size: 0.74rem;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: #93c5fd;
   font-weight: 500;
-  border: none;
 }
 
 .node-name-pill.ready {
-  background: rgba(168, 85, 247, 0.12);
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.25);
   color: #d8b4fe;
-  border: none;
 }
 
 .node-empty-hint {
@@ -1719,18 +1731,18 @@
 
 .kg-warning-banner {
   background: rgba(251, 191, 36, 0.08);
+  border-left: 3px solid #fbbf24;
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   font-size: 0.76rem;
   color: #fde68a;
   line-height: 1.4;
-  border: none;
 }
 
 .search-hint {
-  background: rgba(66, 133, 244, 0.1);
+  background: rgba(66, 133, 244, 0.08);
+  border-color: rgba(66, 133, 244, 0.2);
   color: #93c5fd;
-  border: none;
 }
 
 /* Personalization user.md Styles */
