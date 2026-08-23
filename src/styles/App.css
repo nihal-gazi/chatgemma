@@ -1402,6 +1402,349 @@
   font-style: italic;
 }
 
+/* ==========================================================================
+   Brainstorm Idea & KG Node Search Specialized GUI Tool Styles
+   ========================================================================== */
+
+.brainstorm-gui-container,
+.node-search-gui-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.brainstorm-meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+}
+
+.brainstorm-badge {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--gemini-text-secondary);
+}
+
+.brainstorm-badge.anchor {
+  background: rgba(147, 197, 253, 0.12);
+  color: #93c5fd;
+  border: 1px solid rgba(147, 197, 253, 0.25);
+}
+
+.brainstorm-badge.hops {
+  background: rgba(192, 132, 252, 0.12);
+  color: #d8b4fe;
+  border: 1px solid rgba(192, 132, 252, 0.25);
+}
+
+.brainstorm-badge.mutations {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.brainstorm-badge.seed {
+  background: rgba(52, 211, 153, 0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.25);
+}
+
+/* Mapped Keywords Resolution */
+.brainstorm-keywords-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.brainstorm-kw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.74rem;
+  background: #111214;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.brainstorm-kw-chip.matched {
+  border-color: rgba(66, 133, 244, 0.3);
+}
+
+.brainstorm-kw-chip.unmatched {
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.05);
+}
+
+.kw-label {
+  color: var(--gemini-text-muted);
+  font-style: italic;
+}
+
+.kw-arrow {
+  color: var(--gemini-text-muted);
+  font-size: 0.7rem;
+}
+
+.kw-node {
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.kw-domain-badge {
+  font-size: 0.64rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--gemini-text-muted);
+}
+
+.kw-unmatched-tag {
+  color: #f87171;
+  font-size: 0.68rem;
+}
+
+/* Mutated Traversal Chain */
+.brainstorm-traversal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.brainstorm-hop-card {
+  position: relative;
+  background: #111214;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brainstorm-hop-card.mutated-hop {
+  border-left: 3px solid #fbbf24;
+  background: rgba(251, 191, 36, 0.03);
+  border-color: rgba(251, 191, 36, 0.2);
+}
+
+.brainstorm-hop-card.preserved-hop {
+  border-left: 3px solid rgba(255, 255, 255, 0.15);
+}
+
+.hop-index-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gemini-text-muted);
+}
+
+.hop-visual-flow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+
+.hop-edge-connector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.kg-edge-arrow.mutated {
+  color: #fbbf24;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  background: rgba(251, 191, 36, 0.12);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  letter-spacing: 0.5px;
+}
+
+.hop-mutation-tag {
+  font-size: 0.68rem;
+  color: #fcd34d;
+}
+
+.hop-mutation-tag code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+}
+
+.hop-mutation-reason {
+  font-size: 0.72rem;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 4px 8px;
+  border-radius: 3px;
+  line-height: 1.4;
+  border-left: 2px solid #fbbf24;
+  margin-top: 2px;
+}
+
+/* Original Path Toggle Accordion */
+.brainstorm-original-toggle-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.brainstorm-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  color: var(--gemini-text-secondary);
+  font-size: 0.74rem;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: all 0.15s ease;
+}
+
+.brainstorm-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--gemini-text-primary);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.brainstorm-original-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  background: #0d0e10;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.brainstorm-original-row {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* Verification Directive Banner */
+.brainstorm-verify-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(147, 197, 253, 0.08);
+  border-left: 3px solid #60a5fa;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  color: #bfdbfe;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.brainstorm-verify-banner .verify-icon {
+  color: #60a5fa;
+  flex-shrink: 0;
+}
+
+/* KG Node Search GUI Group Cards */
+.node-search-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-search-group-card {
+  background: #111214;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.node-search-kw-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+}
+
+.node-search-kw-title .kw-name {
+  font-weight: 600;
+  color: var(--gemini-text-primary);
+}
+
+.node-search-kw-title .kw-count-badge {
+  font-size: 0.68rem;
+  color: var(--gemini-text-muted);
+}
+
+.node-search-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.node-name-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.74rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #93c5fd;
+  font-weight: 500;
+}
+
+.node-name-pill.ready {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.25);
+  color: #d8b4fe;
+}
+
+.node-empty-hint {
+  font-size: 0.72rem;
+  color: var(--gemini-text-muted);
+  font-style: italic;
+}
+
+.kg-warning-banner {
+  background: rgba(251, 191, 36, 0.08);
+  border-left: 3px solid #fbbf24;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  color: #fde68a;
+  line-height: 1.4;
+}
+
+.search-hint {
+  background: rgba(66, 133, 244, 0.08);
+  border-color: rgba(66, 133, 244, 0.2);
+  color: #93c5fd;
+}
+
 /* Personalization user.md Styles */
 .modal-textarea-input {
   width: 100%;

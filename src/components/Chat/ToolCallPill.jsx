@@ -438,12 +438,242 @@ function renderToolResponse(name, response) {
     );
   }
 
+  // Specialized Renderer for Brainstorm Idea (Predicate Swapping & Graph Walk)
+  if (name === "brainstorm_idea") {
+    return <BrainstormIdeaRenderer response={response} />;
+  }
+
+  // Specialized Renderer for KG Node Search
+  if (name === "knowledge_graph_node_search") {
+    return <KnowledgeGraphNodeSearchRenderer response={response} />;
+  }
+
   // Default JSON preview for any other tool
   return (
     <div className="tool-json-output">
       <pre>
         <code>{JSON.stringify(response, null, 2)}</code>
       </pre>
+    </div>
+  );
+}
+
+function BrainstormIdeaRenderer({ response }) {
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  if (!response) return null;
+
+  if (response.status === "insufficient_knowledge") {
+    return (
+      <div className="kg-results-container">
+        <div className="kg-warning-banner">
+          ⚠️ <strong>Insufficient Knowledge in Graph</strong>: {response.summary || response.instruction}
+        </div>
+        {response.suggestedSearchQueries && (
+          <div className="kg-section">
+            <div className="kg-section-subtitle">Suggested Search Queries:</div>
+            <div className="kg-type-tags">
+              {response.suggestedSearchQueries.map((q, idx) => (
+                <span key={idx} className="kg-type-tag search-hint">
+                  🔍 {q}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const {
+    startAnchorNode,
+    foundKeywords = [],
+    unfoundKeywords = [],
+    mutatedGraph,
+    originalNonMutatedGraph,
+    actualTraversedHops = mutatedGraph?.pathLength || 0,
+    mutatedHopsCount = mutatedGraph?.mutatedHopsCount || 0,
+    preservedHopsCount = mutatedGraph?.preservedHopsCount || 0,
+    seedUsed,
+    mutations = mutatedGraph?.mutations || [],
+    verificationGuidance,
+  } = response;
+
+  return (
+    <div className="kg-results-container brainstorm-gui-container">
+      {/* 1. Header Badges Row */}
+      <div className="brainstorm-meta-bar">
+        {startAnchorNode && (
+          <span className="brainstorm-badge anchor">
+            ⚓ Anchor: <strong>{startAnchorNode}</strong>
+          </span>
+        )}
+        <span className="brainstorm-badge hops">
+          🕸️ Path: <strong>{actualTraversedHops} Hops</strong>
+        </span>
+        <span className="brainstorm-badge mutations">
+          ⚡ <strong>{mutatedHopsCount} Mutated</strong> / {preservedHopsCount} Preserved
+        </span>
+        {seedUsed !== undefined && (
+          <span className="brainstorm-badge seed">
+            🎲 Seed: <strong>{seedUsed}</strong>
+          </span>
+        )}
+      </div>
+
+      {/* 2. Found / Unfound Keywords Resolution */}
+      {foundKeywords.length > 0 && (
+        <div className="kg-section">
+          <div className="kg-section-subtitle">Mapped Keywords Resolution</div>
+          <div className="brainstorm-keywords-flow">
+            {foundKeywords.map((item, idx) => (
+              <div key={idx} className="brainstorm-kw-chip matched">
+                <span className="kw-label">"{item.keyword}"</span>
+                <span className="kw-arrow">&rarr;</span>
+                <span className="kw-node">{item.matchedNode}</span>
+                {item.domain && <span className="kw-domain-badge">{item.domain}</span>}
+              </div>
+            ))}
+            {unfoundKeywords.map((kw, idx) => (
+              <div key={idx} className="brainstorm-kw-chip unmatched">
+                <span className="kw-label">"{kw}"</span>
+                <span className="kw-unmatched-tag">(unmatched)</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 3. Mutated Counterfactual Graph Traversal */}
+      <div className="kg-section">
+        <div className="kg-section-subtitle">
+          <span>⚡ Mutated Counterfactual Path ({mutations.length} Hops)</span>
+        </div>
+        <div className="brainstorm-traversal-list">
+          {mutations.map((m, idx) => (
+            <div
+              key={idx}
+              className={`brainstorm-hop-card ${m.isMutated ? "mutated-hop" : "preserved-hop"}`}
+            >
+              <div className="hop-index-badge">Hop {m.step || idx + 1}</div>
+              <div className="hop-visual-flow">
+                <span className="kg-node subject">{m.source}</span>
+                <div className="hop-edge-connector">
+                  {m.isMutated ? (
+                    <span className="kg-edge-arrow mutated">
+                      ⚡ {m.mutatedPredicate} ⚡
+                    </span>
+                  ) : (
+                    <span className="kg-edge-arrow">&rarr; {m.originalPredicate} &rarr;</span>
+                  )}
+                  {m.isMutated && (
+                    <span className="hop-mutation-tag">
+                      Swapped from <code>{m.originalPredicate}</code>
+                    </span>
+                  )}
+                </div>
+                <span className="kg-node object">{m.target}</span>
+              </div>
+              {m.isMutated && m.explanation && (
+                <div className="hop-mutation-reason">{m.explanation}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 4. Original Non-Mutated Path (Toggle Accordion) */}
+      {originalNonMutatedGraph?.connectionsList && (
+        <div className="brainstorm-original-toggle-area">
+          <button
+            type="button"
+            className="brainstorm-toggle-btn"
+            onClick={() => setShowOriginal(!showOriginal)}
+          >
+            {showOriginal ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span>View Original Unmutated Path ({originalNonMutatedGraph.connectionsList.length} Hops)</span>
+          </button>
+          {showOriginal && (
+            <div className="brainstorm-original-list">
+              {originalNonMutatedGraph.connectionsList.map((conn, idx) => (
+                <div key={idx} className="brainstorm-original-row">
+                  <span className="original-hop-text">{conn}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. Verification Guidance Callout */}
+      {verificationGuidance && (
+        <div className="brainstorm-verify-banner">
+          <Sparkles size={14} className="verify-icon" />
+          <span>{verificationGuidance}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KnowledgeGraphNodeSearchRenderer({ response }) {
+  if (!response) return null;
+
+  const { graph_target = "general", matchedNodesByKeyword = {}, nodes = [] } = response;
+  const keywordEntries = Object.entries(matchedNodesByKeyword);
+
+  return (
+    <div className="kg-results-container node-search-gui-container">
+      {/* 1. Header Target Badge */}
+      <div className="brainstorm-meta-bar">
+        <span className="brainstorm-badge anchor">
+          📁 Graph: <strong>{graph_target.toUpperCase()} KG</strong>
+        </span>
+        <span className="brainstorm-badge hops">
+          🎯 Found: <strong>{nodes.length} Nodes</strong>
+        </span>
+      </div>
+
+      {/* 2. Keyword Groupings */}
+      {keywordEntries.length > 0 && (
+        <div className="kg-section">
+          <div className="kg-section-subtitle">Discovered Nodes by Keyword</div>
+          <div className="node-search-groups">
+            {keywordEntries.map(([kw, nodeNames], idx) => (
+              <div key={idx} className="node-search-group-card">
+                <div className="node-search-kw-title">
+                  <span className="kw-name">"{kw}"</span>
+                  <span className="kw-count-badge">({nodeNames.length} {nodeNames.length === 1 ? "match" : "matches"})</span>
+                </div>
+                <div className="node-search-chips-grid">
+                  {nodeNames.map((nodeName, nIdx) => (
+                    <span key={nIdx} className="node-name-pill">
+                      {nodeName}
+                    </span>
+                  ))}
+                  {nodeNames.length === 0 && (
+                    <span className="node-empty-hint">No close matching nodes found</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 3. Flat Nodes Array */}
+      {nodes.length > 0 && (
+        <div className="kg-section">
+          <div className="kg-section-subtitle">Ready-to-Brainstorm Nodes ({nodes.length})</div>
+          <div className="node-search-chips-grid">
+            {nodes.map((nodeName, idx) => (
+              <span key={idx} className="node-name-pill ready">
+                ✨ {nodeName}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
