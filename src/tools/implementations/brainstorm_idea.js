@@ -111,10 +111,22 @@ export const brainstormIdeaTool = {
         } else if (entity.aliases?.some((a) => a.toLowerCase() === kwLower)) {
           simScore = 0.95;
         } else if (
-          nameLower.includes(kwLower) ||
-          (kwLower.length > 3 && kwLower.includes(nameLower))
+          nameLower.length >= 4 &&
+          (nameLower.startsWith(kwLower) || kwLower.startsWith(nameLower))
         ) {
-          simScore = 0.85;
+          simScore = 0.88;
+        } else if (nameLower.length >= 4 && kwLower.includes(nameLower)) {
+          const wordRegex = new RegExp(
+            `\\b${nameLower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+            "i"
+          );
+          if (wordRegex.test(kwLower)) {
+            simScore = 0.82;
+          } else {
+            simScore = computeSemanticSimilarity(kwLower, nameLower);
+          }
+        } else if (kwLower.length >= 4 && nameLower.includes(kwLower)) {
+          simScore = 0.82;
         } else {
           const simName = computeSemanticSimilarity(kwLower, nameLower);
           const simDesc = descLower
@@ -436,9 +448,56 @@ export const brainstormIdeaTool = {
         : `[Hop ${m.step}] [${m.source}] ----[${m.originalPredicate}]---> [${m.target}] *(Preserved Path Context)*`
     );
 
+    // Track which input keywords were actually found vs unfound
+    const foundKeywords = [];
+    const unfoundKeywords = [];
+
+    for (const kw of rawKeywords) {
+      const kwMatches = scoredEntities.filter((s) => s.matchedKeyword === kw);
+      if (kwMatches.length > 0) {
+        foundKeywords.push({
+          keyword: kw,
+          matchedNode: kwMatches[0].entity.name,
+          score: Number(kwMatches[0].score.toFixed(3)),
+          domain:
+            kwMatches[0].entity.domain ||
+            kwMatches[0].entity.attributes?.domain ||
+            "General",
+        });
+      } else {
+        unfoundKeywords.push(kw);
+      }
+    }
+
+    const originalNonMutatedConnectionsList = baseSubgraph.map(
+      (t, idx) =>
+        `[Hop ${idx + 1}] [${t.sourceName}] ----[${t.predicate}]---> [${t.targetName}]`
+    );
+
+    const originalNonMutatedGraph = {
+      startAnchorNode: startEntity.name,
+      pathLength: pathTriples.length,
+      basePathChain: baseChainStr,
+      connectionsList: originalNonMutatedConnectionsList,
+    };
+
+    const mutatedGraph = {
+      startAnchorNode: startEntity.name,
+      pathLength: pathTriples.length,
+      mutatedHopsCount: mutationCount,
+      preservedHopsCount: pathTriples.length - mutationCount,
+      mutatedPathChain: mutatedChainStr,
+      mutatedConnectionsList,
+      mutations,
+    };
+
     return {
       status: "success",
       technique: "predicate_swap",
+      foundKeywords,
+      unfoundKeywords,
+      originalNonMutatedGraph,
+      mutatedGraph,
       keywords: rawKeywords,
       startAnchorNode: startEntity.name,
       seedUsed: seed,
@@ -453,8 +512,8 @@ export const brainstormIdeaTool = {
       verificationGuidance:
         "Verify whether a valid idea can be made or not. Otherwise, re-run the brainstorm tool.",
       instruction:
-        "Analyze the mutated connections list above. Verify whether a valid, breakthrough idea can be made from these counterfactual relationships. If a valid idea can be synthesized, generate the complete, deep proposal for the user. Otherwise, re-run 'brainstorm_idea' with a different seed, adjusted keywords, or changed max_graph_length.",
-      summary: `Extracted ${pathTriples.length}-hop path from [${startEntity.name}] with ${mutationCount} mutated predicates (${mutatedTriplesSummary}) [Seed: ${seed}]. Verify whether a valid idea can be made or not. Otherwise, re-run the brainstorm tool.`,
+        "Analyze the found keywords, original non-mutated graph, and mutated connections list above. Verify whether a valid, breakthrough idea can be made from these counterfactual relationships. If a valid idea can be synthesized, generate the complete, deep proposal for the user. Otherwise, re-run 'brainstorm_idea' with a different seed, adjusted keywords, or changed max_graph_length.",
+      summary: `Extracted ${pathTriples.length}-hop path from [${startEntity.name}] with ${mutationCount} mutated predicates (${mutatedTriplesSummary}) [Seed: ${seed}]. Found keywords: [${foundKeywords.map((f) => f.keyword).join(", ")}]. Verify whether a valid idea can be made or not. Otherwise, re-run the brainstorm tool.`,
     };
   },
 };

@@ -361,8 +361,12 @@ export class GemmaApiService {
 Current Date: ${currentDateStr}.
 
 PROTOCOL:
-1. BRAINSTORMING & IDEA GENERATION (MANDATORY): Always use the 'brainstorm_idea' tool whenever trying to find or generate ideas, explore novel hypotheses, discover breakthrough mechanisms, or brainstorm creative solutions. When 'brainstorm_idea' returns the mutated connections list, verify whether a valid, insightful idea can be engineered from the counterfactual relationships. If a valid idea can be made, synthesize it thoroughly; otherwise, re-run 'brainstorm_idea' with a different seed, adjusted keywords, or changed max_graph_length.
-2. Use available tools (brainstorm_idea, file_search, user_knowledge_graph_search, user_knowledge_graph_write, user_knowledge_graph_delete, knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) whenever querying uploaded files/documents, learned knowledge, saving facts, soft-deleting items, web search grounding, computation, or history is needed.
+1. BRAINSTORMING & IDEA GENERATION PIPELINE (MANDATORY):
+   - Step 1: When asked to brainstorm, discover novel hypotheses, explore creative analogies, or solve tough problems, FIRST call 'knowledge_graph_node_search' with your candidate keywords to find and verify the exact node names in the Knowledge Graph (General KG or User KG).
+   - Step 2: Call 'brainstorm_idea' passing the exact discovered node names/keywords to anchor the continuous multi-hop graph walk.
+   - Step 3: Inspect the returned 'foundKeywords', 'originalNonMutatedGraph', and 'mutatedGraph' ('mutatedConnectionsList'). Verify whether a valid, high-impact idea can be made from the counterfactual relationships.
+   - Step 4: If a valid idea can be made, synthesize it thoroughly for the user; otherwise, re-run 'brainstorm_idea' with a different seed, adjusted keywords, or changed max_graph_length.
+2. Use available tools (knowledge_graph_node_search, brainstorm_idea, file_search, user_knowledge_graph_search, user_knowledge_graph_write, user_knowledge_graph_delete, knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) whenever querying uploaded files/documents, learned knowledge, saving facts, soft-deleting items, web search grounding, computation, or history is needed.
 3. Use file_search to inspect, search, or read full contents of uploaded files, documents, images, and attached code.
 4. Use user_knowledge_graph_search, user_knowledge_graph_write, and user_knowledge_graph_delete for USER personal preferences, user identity, workflows, personal tools, and user projects. (Writing/deleting here automatically synchronizes user.md).
 5. Use knowledge_search, knowledge_graph_write, and knowledge_graph_delete for general world knowledge, domain concepts, external frameworks, and shared project knowledge.

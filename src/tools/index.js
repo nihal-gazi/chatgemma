@@ -9,6 +9,7 @@ import { toolRegistry } from "./registry.js";
 import { grepTool } from "./implementations/grep.js";
 import { fileSearchTool } from "./implementations/file_search.js";
 import { brainstormIdeaTool } from "./implementations/brainstorm_idea.js";
+import { knowledgeGraphNodeSearchTool } from "./implementations/knowledge_graph_node_search.js";
 import { knowledgeSearchTool } from "./implementations/knowledge_search.js";
 import { knowledgeGraphWriteTool } from "./implementations/knowledge_graph_write.js";
 import { knowledgeGraphDeleteTool } from "./implementations/knowledge_graph_delete.js";
@@ -20,6 +21,7 @@ import { userKnowledgeGraphDeleteTool } from "./implementations/user_knowledge_g
 toolRegistry.register(grepTool);
 toolRegistry.register(fileSearchTool);
 toolRegistry.register(brainstormIdeaTool);
+toolRegistry.register(knowledgeGraphNodeSearchTool);
 toolRegistry.register(knowledgeSearchTool);
 toolRegistry.register(knowledgeGraphWriteTool);
 toolRegistry.register(knowledgeGraphDeleteTool);
@@ -32,6 +34,7 @@ export {
   grepTool,
   fileSearchTool,
   brainstormIdeaTool,
+  knowledgeGraphNodeSearchTool,
   knowledgeSearchTool,
   knowledgeGraphWriteTool,
   knowledgeGraphDeleteTool,

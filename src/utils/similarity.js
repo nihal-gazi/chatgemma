@@ -159,9 +159,19 @@ export function computeSemanticSimilarity(strA = "", strB = "") {
   const b = strB.toLowerCase().trim();
   if (a === b) return 1.0;
 
-  // Exact substring match
-  if (a.includes(b) || b.includes(a)) {
-    return 0.85;
+  // Exact substring match (only if substring has length >= 4 and matches a word boundary or has high length ratio)
+  if (a.length >= 4 && b.length >= 4) {
+    const shorter = a.length <= b.length ? a : b;
+    const longer = a.length <= b.length ? b : a;
+    if (longer.includes(shorter)) {
+      const wordRegex = new RegExp(
+        `\\b${shorter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+        "i"
+      );
+      if (wordRegex.test(longer) || shorter.length / longer.length >= 0.6) {
+        return 0.85;
+      }
+    }
   }
 
   // Generate 2-gram and 3-gram feature sets
