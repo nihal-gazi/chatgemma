@@ -467,15 +467,15 @@ function BrainstormIdeaRenderer({ response }) {
     return (
       <div className="kg-results-container">
         <div className="kg-warning-banner">
-          ⚠️ <strong>Insufficient Knowledge in Graph</strong>: {response.summary || response.instruction}
+          <strong>Insufficient Knowledge in Graph:</strong> {response.summary || response.instruction}
         </div>
         {response.suggestedSearchQueries && (
           <div className="kg-section">
-            <div className="kg-section-subtitle">Suggested Search Queries:</div>
+            <div className="kg-section-subtitle">Suggested Search Queries</div>
             <div className="kg-type-tags">
               {response.suggestedSearchQueries.map((q, idx) => (
                 <span key={idx} className="kg-type-tag search-hint">
-                  🔍 {q}
+                  {q}
                 </span>
               ))}
             </div>
@@ -505,18 +505,18 @@ function BrainstormIdeaRenderer({ response }) {
       <div className="brainstorm-meta-bar">
         {startAnchorNode && (
           <span className="brainstorm-badge anchor">
-            ⚓ Anchor: <strong>{startAnchorNode}</strong>
+            Anchor: <strong>{startAnchorNode}</strong>
           </span>
         )}
         <span className="brainstorm-badge hops">
-          🕸️ Path: <strong>{actualTraversedHops} Hops</strong>
+          Path: <strong>{actualTraversedHops} Hops</strong>
         </span>
         <span className="brainstorm-badge mutations">
-          ⚡ <strong>{mutatedHopsCount} Mutated</strong> / {preservedHopsCount} Preserved
+          <strong>{mutatedHopsCount} Mutated</strong> / {preservedHopsCount} Preserved
         </span>
         {seedUsed !== undefined && (
           <span className="brainstorm-badge seed">
-            🎲 Seed: <strong>{seedUsed}</strong>
+            Seed: <strong>{seedUsed}</strong>
           </span>
         )}
       </div>
@@ -547,7 +547,7 @@ function BrainstormIdeaRenderer({ response }) {
       {/* 3. Mutated Counterfactual Graph Traversal */}
       <div className="kg-section">
         <div className="kg-section-subtitle">
-          <span>⚡ Mutated Counterfactual Path ({mutations.length} Hops)</span>
+          <span>Mutated Counterfactual Path ({mutations.length} Hops)</span>
         </div>
         <div className="brainstorm-traversal-list">
           {mutations.map((m, idx) => (
@@ -561,7 +561,7 @@ function BrainstormIdeaRenderer({ response }) {
                 <div className="hop-edge-connector">
                   {m.isMutated ? (
                     <span className="kg-edge-arrow mutated">
-                      ⚡ {m.mutatedPredicate} ⚡
+                      {m.mutatedPredicate}
                     </span>
                   ) : (
                     <span className="kg-edge-arrow">&rarr; {m.originalPredicate} &rarr;</span>
@@ -608,7 +608,6 @@ function BrainstormIdeaRenderer({ response }) {
       {/* 5. Verification Guidance Callout */}
       {verificationGuidance && (
         <div className="brainstorm-verify-banner">
-          <Sparkles size={14} className="verify-icon" />
           <span>{verificationGuidance}</span>
         </div>
       )}
@@ -627,10 +626,10 @@ function KnowledgeGraphNodeSearchRenderer({ response }) {
       {/* 1. Header Target Badge */}
       <div className="brainstorm-meta-bar">
         <span className="brainstorm-badge anchor">
-          📁 Graph: <strong>{graph_target.toUpperCase()} KG</strong>
+          Graph: <strong>{graph_target.toUpperCase()} KG</strong>
         </span>
         <span className="brainstorm-badge hops">
-          🎯 Found: <strong>{nodes.length} Nodes</strong>
+          Found: <strong>{nodes.length} Nodes</strong>
         </span>
       </div>
 
@@ -668,7 +667,7 @@ function KnowledgeGraphNodeSearchRenderer({ response }) {
           <div className="node-search-chips-grid">
             {nodes.map((nodeName, idx) => (
               <span key={idx} className="node-name-pill ready">
-                ✨ {nodeName}
+                {nodeName}
               </span>
             ))}
           </div>
