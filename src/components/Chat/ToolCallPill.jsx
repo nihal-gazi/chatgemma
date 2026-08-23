@@ -485,6 +485,107 @@ function BrainstormIdeaRenderer({ response }) {
     );
   }
 
+  const mode = response.mode || (Array.isArray(response.pairs) ? "random_pair" : "predicate_swap");
+
+  // RENDER RANDOM PAIR MODE
+  if (mode === "random_pair") {
+    const {
+      pairCount = response.pairs?.length || 0,
+      seedUsed,
+      foundKeywords = [],
+      unfoundKeywords = [],
+      pairs = [],
+      verificationGuidance,
+    } = response;
+
+    return (
+      <div className="kg-results-container brainstorm-gui-container">
+        {/* 1. Header Badges Row */}
+        <div className="brainstorm-meta-bar">
+          <span className="brainstorm-badge anchor">
+            Mode: <strong>Random Disconnected Pairs</strong>
+          </span>
+          <span className="brainstorm-badge hops">
+            Pairs: <strong>{pairCount} Generated</strong>
+          </span>
+          {seedUsed !== undefined && (
+            <span className="brainstorm-badge seed">
+              Seed: <strong>{seedUsed}</strong>
+            </span>
+          )}
+        </div>
+
+        {/* 2. Found / Unfound Keywords Resolution (if any) */}
+        {foundKeywords.length > 0 && (
+          <div className="kg-section">
+            <div className="kg-section-subtitle">Mapped Keywords Resolution</div>
+            <div className="brainstorm-keywords-flow">
+              {foundKeywords.map((item, idx) => (
+                <div key={idx} className="brainstorm-kw-chip matched">
+                  <span className="kw-label">"{item.keyword}"</span>
+                  <span className="kw-arrow">&rarr;</span>
+                  <span className="kw-node">{item.matchedNode}</span>
+                  {item.domain && <span className="kw-domain-badge">{item.domain}</span>}
+                </div>
+              ))}
+              {unfoundKeywords.map((kw, idx) => (
+                <div key={idx} className="brainstorm-kw-chip unmatched">
+                  <span className="kw-label">"{kw}"</span>
+                  <span className="kw-unmatched-tag">(unmatched)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 3. Disconnected Pairs List */}
+        <div className="kg-section">
+          <div className="kg-section-subtitle">
+            <span>Random Disconnected Node Pairings ({pairs.length})</span>
+          </div>
+          <div className="brainstorm-traversal-list">
+            {pairs.map((p, idx) => (
+              <div key={idx} className="brainstorm-hop-card mutated-hop">
+                <div className="hop-index-badge">Pair {p.pairIndex || idx + 1}</div>
+                <div className="hop-visual-flow">
+                  <div className="kg-node-group">
+                    <span className="kg-node subject">{p.source}</span>
+                    {p.sourceDomain && (
+                      <span className="kw-domain-badge">{p.sourceDomain}</span>
+                    )}
+                  </div>
+                  <div className="hop-edge-connector">
+                    <span className="kg-edge-arrow mutated">
+                      {p.predicate}
+                    </span>
+                    <span className="hop-mutation-tag">
+                      0 prior connections in KG
+                    </span>
+                  </div>
+                  <div className="kg-node-group">
+                    <span className="kg-node object">{p.target}</span>
+                    {p.targetDomain && (
+                      <span className="kw-domain-badge">{p.targetDomain}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 4. Verification Guidance Callout */}
+        {verificationGuidance && (
+          <div className="brainstorm-verify-banner">
+            <Sparkles size={14} className="verify-icon" />
+            <span>{verificationGuidance}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // RENDER PREDICATE SWAP MODE
   const {
     startAnchorNode,
     foundKeywords = [],

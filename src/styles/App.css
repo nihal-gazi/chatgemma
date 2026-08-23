@@ -1558,6 +1558,12 @@
   font-size: 0.78rem;
 }
 
+.kg-node-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .hop-edge-connector {
   display: inline-flex;
   align-items: center;

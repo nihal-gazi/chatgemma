@@ -6,55 +6,314 @@
  * 3. Semantic similarity and Graph Density Guardrails ("not_enough_knowledge")
  */
 
-import { knowledgeGraphInstance } from "../../services/knowledgeGraph.js";
+import { knowledgeGraphInstance, userKnowledgeGraphInstance } from "../../services/knowledgeGraph.js";
 import {
   getMutatedPredicate,
   computeSemanticSimilarity,
   extractSalientKeywords,
+  PREDICATE_INVERSIONS,
+  PREDICATE_FUNCTIONAL_CATEGORIES,
+  ORTHOGONAL_PREDICATES,
 } from "../../utils/similarity.js";
+
+const ALL_CANDIDATE_PREDICATES = Array.from(
+  new Set([
+    ...Object.keys(PREDICATE_INVERSIONS),
+    ...Object.values(PREDICATE_INVERSIONS),
+    ...Object.values(PREDICATE_FUNCTIONAL_CATEGORIES).flat(),
+    ...ORTHOGONAL_PREDICATES,
+    "CATALYZES",
+    "INHIBITS",
+    "TRANSMUTES",
+    "NEUTRALIZES",
+    "QUANTIZES",
+    "AMPLIFIES",
+    "DISRUPTS",
+    "HARMONIZES",
+    "DECOUPLES",
+    "STABILIZES",
+    "ACCELERATES",
+    "DECELERATES",
+    "COMPRESSES",
+    "EXPANDS",
+    "ENCRYPTS",
+    "DECRYPTS",
+    "TEACHES",
+    "EMPOWERS",
+    "MODULATES",
+    "CONVERGES_WITH",
+  ])
+);
 
 export const brainstormIdeaTool = {
   name: "brainstorm_idea",
   displayName: "KG Idea Brainstormer",
   iconName: "Sparkles",
   description:
-    "Brainstorms novel ideas by traversing a continuous multi-hop path of length L across the Knowledge Graph starting from keyword-matched anchor nodes, and applying K randomized predicate mutations along that path. Returns the mutated connections list ONLY. The AI model must verify whether a valid idea can be made from the mutated connections; otherwise, re-run brainstorm_idea with different seeds, keywords, or graph lengths.",
+    "Brainstorms novel ideas using the Knowledge Graph via two distinct modes: 1. 'predicate_swap' (default): traverses a continuous multi-hop path of length L from keyword-matched anchors and applies K randomized predicate mutations along the path. 2. 'random_pair': chooses K pairs of random nodes between which there is NO connection in the graph and assigns a random predicate to bridge unrelated concepts. Returns connections list. The AI model must verify whether a valid idea can be made; otherwise, re-run with different seeds, modes, or keywords.",
   parameters: {
     type: "OBJECT",
     properties: {
+      mode: {
+        type: "STRING",
+        enum: ["predicate_swap", "random_pair"],
+        description:
+          "Brainstorming technique: 'predicate_swap' (default: continuous graph walk of length L with randomized predicate mutations) or 'random_pair' (generates K random disconnected node pairs with a random predicate to bridge unrelated concepts).",
+      },
       keywords: {
         type: "ARRAY",
         items: { type: "STRING" },
         description:
-          "Array of target concepts, keywords, or domain terms to anchor the brainstorm around (e.g. ['attention mechanism', 'loss landscape'], ['quantum tunneling', 'flash memory'], ['Al-Ghazali', 'rationalism']).",
+          "Array of target concepts, keywords, or domain terms to anchor the brainstorm around (e.g. ['attention mechanism', 'loss landscape'], ['quantum tunneling', 'flash memory']). Optional in 'random_pair' mode.",
+      },
+      k_pairs: {
+        type: "INTEGER",
+        description:
+          "Count of random disconnected pairs to generate when mode is 'random_pair' (default: 5, min: 1, max: 20).",
       },
       max_graph_length: {
         type: "INTEGER",
         description:
-          "Maximum length / count of relational triples in the extracted subgraph to anchor and mutate (e.g. 3, 5, 8, default: 6).",
+          "Maximum length / count of relational triples in the continuous path walk for 'predicate_swap' mode (default: 6, min: 1, max: 30).",
       },
       seed: {
         type: "INTEGER",
         description:
-          "Optional random seed number (e.g. 1, 42, 101, 2026) to explore diverse idea variations and randomize which predicates get swapped.",
+          "Optional random seed number (e.g. 1, 42, 101, 2026) to explore diverse idea variations and randomize pair/predicate selections.",
       },
       targetDomain: {
         type: "STRING",
         description: "Optional domain context to guide the application of the brainstormed idea.",
       },
     },
-    required: ["keywords"],
   },
   renderSummary: (args) => {
+    const mode = args.mode || "predicate_swap";
     const kws = Array.isArray(args.keywords)
       ? args.keywords.join(", ")
       : args.keywords || args.prompt || "";
-    return `Brainstorm: [${kws}] (max_len: ${args.max_graph_length || 6}${
+    if (mode === "random_pair") {
+      return `Brainstorm (Random Pairs): ${args.k_pairs || args.max_graph_length || 5} pairs${
+        args.seed !== undefined ? `, seed: ${args.seed}` : ""
+      }`;
+    }
+    return `Brainstorm (Predicate Swap): [${kws}] (max_len: ${args.max_graph_length || 6}${
       args.seed !== undefined ? `, seed: ${args.seed}` : ""
     })`;
   },
 
   async execute(args, context = {}) {
+    const mode = (args.mode || "predicate_swap").toLowerCase();
+    const seed =
+      args.seed !== undefined
+        ? Number(args.seed) || 0
+        : Math.floor(Math.random() * 100000);
+
+    const kgService = context.knowledgeGraph || knowledgeGraphInstance;
+    const userKG = context.userKnowledgeGraph || userKnowledgeGraphInstance;
+
+    // --------------------------------------------------------------------------
+    // MODE 2: RANDOM DISCONNECTED PAIRS (random_pair)
+    // --------------------------------------------------------------------------
+    if (mode === "random_pair") {
+      const kPairs = Math.max(
+        1,
+        Math.min(
+          Number(args.k_pairs || args.max_graph_length || args.count) || 5,
+          20
+        )
+      );
+
+      // Collect all active entities from General and User KG
+      const allActiveEntities = [
+        ...Array.from(kgService.entities.values()),
+        ...Array.from(userKG?.entities?.values() || []),
+      ].filter((e) => e.isActive !== false);
+
+      if (allActiveEntities.length < 2) {
+        return {
+          status: "insufficient_knowledge",
+          mode: "random_pair",
+          summary: "Knowledge graph has fewer than 2 active nodes to form pairs.",
+          instruction: "Please ingest more knowledge into the graph before brainstorming random pairs.",
+        };
+      }
+
+      // Build Adjacency Set of all active existing relations (undirected check)
+      const connectedPairs = new Set();
+      const allRelations = [
+        ...Array.from(kgService.relations.values()),
+        ...Array.from(userKG?.relations?.values() || []),
+      ].filter((r) => r.isActive !== false);
+
+      for (const rel of allRelations) {
+        if (rel.sourceId && rel.targetId) {
+          connectedPairs.add(`${rel.sourceId}->${rel.targetId}`);
+          connectedPairs.add(`${rel.targetId}->${rel.sourceId}`);
+        }
+        if (rel.source && rel.target) {
+          const sLower = rel.source.toLowerCase();
+          const tLower = rel.target.toLowerCase();
+          connectedPairs.add(`${sLower}->${tLower}`);
+          connectedPairs.add(`${tLower}->${sLower}`);
+        }
+      }
+
+      // Optional keyword extraction if provided
+      let rawKeywords = [];
+      if (Array.isArray(args.keywords)) {
+        rawKeywords = args.keywords.map((k) => String(k).trim()).filter(Boolean);
+      } else if (typeof args.keywords === "string" && args.keywords.trim()) {
+        rawKeywords = args.keywords
+          .split(/[,;\n]+/)
+          .map((k) => k.trim())
+          .filter(Boolean);
+      }
+
+      const foundKeywords = [];
+      const unfoundKeywords = [];
+      let biasedEntities = [];
+
+      if (rawKeywords.length > 0) {
+        for (const kw of rawKeywords) {
+          const kwLower = kw.toLowerCase();
+          let bestMatch = null;
+          let bestScore = 0;
+
+          for (const entity of allActiveEntities) {
+            const nameLower = (entity.name || "").toLowerCase();
+            let score = 0;
+            if (nameLower === kwLower) score = 1.0;
+            else if (entity.aliases?.some((a) => a.toLowerCase() === kwLower)) score = 0.95;
+            else score = computeSemanticSimilarity(kwLower, nameLower);
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestMatch = entity;
+            }
+          }
+
+          if (bestMatch && bestScore >= 0.5) {
+            foundKeywords.push({
+              keyword: kw,
+              matchedNode: bestMatch.name,
+              score: Number(bestScore.toFixed(3)),
+              domain: bestMatch.domain || bestMatch.attributes?.domain || "General",
+            });
+            biasedEntities.push(bestMatch);
+          } else {
+            unfoundKeywords.push(kw);
+          }
+        }
+      }
+
+      // Seeded Pseudorandom Number Generator
+      let currentSeed = Math.abs(seed) + 7;
+      const seededRandom = () => {
+        currentSeed = (currentSeed * 9301 + 49297) % 233280;
+        return currentSeed / 233280;
+      };
+
+      const selectedPairs = [];
+      const selectedPairKeys = new Set();
+      let attempts = 0;
+      const maxAttempts = 600;
+
+      while (selectedPairs.length < kPairs && attempts < maxAttempts) {
+        attempts++;
+
+        // Pick Node A: preferentially pick from biased entities if available, else random
+        let entityA;
+        if (
+          biasedEntities.length > 0 &&
+          selectedPairs.length < biasedEntities.length
+        ) {
+          entityA = biasedEntities[selectedPairs.length];
+        } else {
+          const idxA = Math.floor(seededRandom() * allActiveEntities.length);
+          entityA = allActiveEntities[idxA];
+        }
+
+        // Pick Node B from all active entities
+        const idxB = Math.floor(seededRandom() * allActiveEntities.length);
+        const entityB = allActiveEntities[idxB];
+
+        if (!entityA || !entityB) continue;
+        if (entityA.id === entityB.id) continue;
+        if (entityA.name.toLowerCase() === entityB.name.toLowerCase()) continue;
+
+        const pairKey1 = `${entityA.name.toLowerCase()}|||${entityB.name.toLowerCase()}`;
+        const pairKey2 = `${entityB.name.toLowerCase()}|||${entityA.name.toLowerCase()}`;
+        if (selectedPairKeys.has(pairKey1) || selectedPairKeys.has(pairKey2)) {
+          continue;
+        }
+
+        // VERIFY NO EXISTING CONNECTION IN THE GRAPH
+        const isConnected =
+          connectedPairs.has(`${entityA.id}->${entityB.id}`) ||
+          connectedPairs.has(`${entityB.id}->${entityA.id}`) ||
+          connectedPairs.has(
+            `${entityA.name.toLowerCase()}->${entityB.name.toLowerCase()}`
+          ) ||
+          connectedPairs.has(
+            `${entityB.name.toLowerCase()}->${entityA.name.toLowerCase()}`
+          );
+
+        if (isConnected) {
+          continue;
+        }
+
+        // Select a random predicate
+        const predIdx = Math.floor(
+          seededRandom() * ALL_CANDIDATE_PREDICATES.length
+        );
+        const predicate = ALL_CANDIDATE_PREDICATES[predIdx];
+
+        selectedPairKeys.add(pairKey1);
+        selectedPairs.push({
+          pairIndex: selectedPairs.length + 1,
+          source: entityA.name,
+          sourceDomain:
+            entityA.domain || entityA.attributes?.domain || "General",
+          predicate,
+          target: entityB.name,
+          targetDomain:
+            entityB.domain || entityB.attributes?.domain || "General",
+          connection: `[Pair ${
+            selectedPairs.length + 1
+          }] [${entityA.name}] ----[${predicate}]---> [${
+            entityB.name
+          }] *(Disconnected Domains: ${
+            entityA.domain || "General"
+          } ↔ ${entityB.domain || "General"})*`,
+          isDisconnected: true,
+          priorConnectionsCount: 0,
+        });
+      }
+
+      const pairsList = selectedPairs.map((p) => p.connection);
+
+      return {
+        status: "success",
+        mode: "random_pair",
+        pairCount: selectedPairs.length,
+        seedUsed: seed,
+        foundKeywords,
+        unfoundKeywords,
+        pairs: selectedPairs,
+        pairsList,
+        mutatedConnectionsList: pairsList,
+        verificationGuidance:
+          "Verify whether a valid idea can be made or not. Otherwise, re-run the brainstorm tool.",
+        instruction:
+          "Analyze the K random disconnected pairs above. Each pair connects two previously unconnected concepts in the Knowledge Graph with a novel predicate. Verify whether a valid, breakthrough idea can be synthesized from one or more of these pairings. If a valid idea can be formulated, synthesize the complete proposal for the user. Otherwise, re-run 'brainstorm_idea' in 'random_pair' mode with a different seed.",
+        summary: `Generated ${selectedPairs.length} novel disconnected node pairs across Knowledge Graph domains [Seed: ${seed}]. Verify whether a valid idea can be made or not. Otherwise, re-run the brainstorm tool.`,
+      };
+    }
+
+    // --------------------------------------------------------------------------
+    // MODE 1: PREDICATE SWAPPING (predicate_swap)
+    // --------------------------------------------------------------------------
     // 1. Normalize keywords and parameters
     let rawKeywords = [];
     if (Array.isArray(args.keywords)) {
@@ -75,10 +334,6 @@ export const brainstormIdeaTool = {
       Math.min(Number(args.max_graph_length) || 6, 30)
     );
     const targetDomain = (args.targetDomain || "").trim();
-    const seed =
-      args.seed !== undefined
-        ? Number(args.seed) || 0
-        : Math.floor(Math.random() * 100000);
 
     if (rawKeywords.length === 0) {
       return {
@@ -87,11 +342,6 @@ export const brainstormIdeaTool = {
           "No keywords provided. Please specify one or more keywords to anchor the brainstorm.",
       };
     }
-
-    const kgService = context.knowledgeGraph || knowledgeGraphInstance;
-    const apiKey = context.apiKey || context.settings?.apiKey;
-    const modelId = context.modelId || context.settings?.modelId;
-    const signal = context.signal;
 
     // 2. Retrieve anchor entities using Cosine Similarity (MiniLM-style character n-gram cosine sim)
     const allEntities = Array.from(kgService.entities.values()).filter(
