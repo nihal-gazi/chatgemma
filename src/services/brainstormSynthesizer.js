@@ -26,54 +26,69 @@ import { fetchWithRateLimit } from "./api.js";
  */
 export async function synthesizeBrainstormWithGemma(
   {
+    keywords = [],
     prompt,
-    technique,
+    baseSubgraph = [],
+    mutatedSubgraph = [],
+    mutations = [],
     baseTriple,
     mutation,
-    sourceDomain,
-    analogousDomain,
-    structuralMappingMatrix,
+    targetDomain,
   },
   { apiKey, modelId, signal, seed } = {}
 ) {
   const cleanKey = (apiKey || CONFIG.defaultApiKey || "").trim();
   const rawModel = CONFIG.resolveModelName(modelId || CONFIG.defaultModelId);
 
+  const kwList = Array.isArray(keywords) && keywords.length > 0 ? keywords.join(", ") : (prompt || "General Concept");
+
+  // Format base and mutated subgraphs
+  let baseStr = "";
+  let mutatedStr = "";
+
+  if (baseSubgraph && baseSubgraph.length > 0) {
+    baseStr = baseSubgraph.map((t) => `[${t.sourceName}] ----[${t.predicate}]---> [${t.targetName}]`).join("\n");
+  } else if (baseTriple) {
+    baseStr = `[${baseTriple.subject}] ----[${baseTriple.predicate}]---> [${baseTriple.object}]`;
+  }
+
+  if (mutations && mutations.length > 0) {
+    mutatedStr = mutations
+      .map((m) => {
+        if (m.isMutated) {
+          return `[${m.source}] ----[${m.mutatedPredicate}]---> [${m.target}] *(MUTATED from ${m.originalPredicate}: ${m.explanation || "Inversion"})*`;
+        }
+        return `[${m.source}] ----[${m.originalPredicate}]---> [${m.target}] *(Preserved Context)*`;
+      })
+      .join("\n");
+  } else if (mutation) {
+    mutatedStr = `[${mutation.subject}] ----[${mutation.mutatedPredicate}]---> [${mutation.object}]`;
+  }
+
   if (!cleanKey) {
+    const firstMut = mutations.find((m) => m.isMutated) || mutation;
     return {
       title: "Generated Hypothesis",
-      synthesis:
-        technique === "predicate_swap"
-          ? `Concept based on mutating [${baseTriple?.subject}] ----[${mutation?.mutatedPredicate}]---> [${baseTriple?.object}]. (Add an API key in Settings to enable automated in-tool deep synthesis).`
-          : `Concept based on mapping [${sourceDomain?.coreConcept}] to [${analogousDomain?.analogousConcept}]. (Add an API key in Settings to enable automated in-tool deep synthesis).`,
+      synthesis: `Concept based on mutating Knowledge Graph subgraph for [${kwList}] (Add an API key in Settings to enable automated in-tool deep synthesis).\n\nMutated Subgraph:\n${mutatedStr}`,
       model: "offline-fallback",
-      connectionSummary:
-        technique === "predicate_swap"
-          ? `Connection: [${baseTriple?.subject}] -[${baseTriple?.predicate}]-> [${baseTriple?.object}] mutated to -[${mutation?.mutatedPredicate}]->`
-          : `Connection: ${sourceDomain?.subgraph} mapped to ${analogousDomain?.subgraph}`,
+      connectionSummary: `Connection: Subgraph for ${kwList} with predicate swaps:\n${mutatedStr}`,
     };
   }
 
-  let systemPrompt = "";
-  let userPrompt = "";
-  let connectionSummary = "";
+  const connectionSummary = `Knowledge Graph Subgraph Mutation:\nBase Facts:\n${baseStr}\n\nMutated Subgraph:\n${mutatedStr}`;
 
-  if (technique === "predicate_swap") {
-    connectionSummary = `Knowledge Graph Connection: [${baseTriple?.subject}] ----[${baseTriple?.predicate}]---> [${baseTriple?.object}] was mutated to [${baseTriple?.subject}] ----[${mutation?.mutatedPredicate}]---> [${baseTriple?.object}].`;
+  const systemPrompt = `You are an elite inventive engineer and futurist AI for ChatGemma.
+Your task is to take a set of counter-factual relationships generated from Knowledge Graph edge mutations (randomized predicate swaps) and invent a high-impact, technologically or conceptually viable breakthrough idea.`;
 
-    systemPrompt = `You are an elite inventive engineer and futurist AI for ChatGemma.
-Your task is to take a counter-factual relationship generated from a Knowledge Graph edge mutation and invent a high-impact, technologically or conceptually viable breakthrough idea.`;
-
-    userPrompt = `User Prompt / Goal: "${prompt}"
+  const userPrompt = `Target Keywords / Focus Areas: ${kwList}${targetDomain ? ` (Target Domain: ${targetDomain})` : ""}
 
 ${connectionSummary}
-Mutation Rationale: ${mutation?.explanation || "Semantic relationship inversion"}
 
 Develop a comprehensive and polished brainstorming proposal that makes this mutated relationship real, useful, and commercially or scientifically advantageous.
 
 Format your response cleanly in GitHub Markdown using these exact sections:
 ### 💡 Breakthrough Concept: <Creative Title>
-**Core Inversion**: Explain what was inverted and why it creates a paradigm shift.
+**Core Inversion & Mutated Hypotheses**: Explain what predicates were swapped and why this creates a paradigm shift.
 
 #### 1. Engineered Mechanism
 Explain how this works in practice (physical, algorithmic, biological, or architectural mechanism).
@@ -83,45 +98,6 @@ Where and why this completely outperforms conventional approaches.
 
 #### 3. Feasibility, Constraints & Immediate Next Step
 Practical considerations, edge cases, and what prototype or experiment should be conducted first.`;
-  } else {
-    // Isomorphic Mapping
-    connectionSummary = `Knowledge Graph Connection: Mapped [${sourceDomain?.coreConcept}] in ${sourceDomain?.name} to [${analogousDomain?.analogousConcept}] in ${analogousDomain?.name} (Similarity: ${(analogousDomain?.similarityScore * 100).toFixed(0)}%).`;
-
-    systemPrompt = `You are an elite cross-domain innovation architect and biomimetic engineer for ChatGemma.
-Your task is to take an isomorphic structural analogy between two completely different domains and project mechanisms from the distant domain into the target domain to generate a breakthrough innovation.`;
-
-    userPrompt = `User Prompt / Goal: "${prompt}"
-
-${connectionSummary}
-
-Source Domain Subgraph:
-${sourceDomain?.subgraph}
-
-Analogous Distant Domain Subgraph:
-${analogousDomain?.subgraph}
-
-Structural Mapping Matrix:
-${JSON.stringify(structuralMappingMatrix, null, 2)}
-
-Your task:
-Transfer deep principles, secondary defenses, adaptation, or self-organizing mechanisms from [${analogousDomain?.analogousConcept}] (${analogousDomain?.name}) into [${sourceDomain?.coreConcept}] (${sourceDomain?.name}).
-
-Format your response cleanly in GitHub Markdown using these exact sections:
-### 💡 Breakthrough Concept: <Creative Title>
-**Cross-Domain Foundation**: State the analogy clearly and the core mechanism being imported.
-
-#### 1. Cross-Domain Principle Transfer
-What specific dynamics, feedback loops, or behaviors from ${analogousDomain?.name} are being translated.
-
-#### 2. System Architecture & Technical Implementation
-Concrete blueprints of how this will be engineered in ${sourceDomain?.name}.
-
-#### 3. Strategic Breakthrough & Unfair Advantages
-Why existing approaches in ${sourceDomain?.name} fail to solve this, and how the imported principles overcome that barrier.
-
-#### 4. Practical Implementation Path
-Immediate pilot project, experiment, or simulation to validate the concept.`;
-  }
 
   const endpoint = `${CONFIG.apiBaseUrl}/${rawModel}:generateContent?key=${encodeURIComponent(cleanKey)}`;
 

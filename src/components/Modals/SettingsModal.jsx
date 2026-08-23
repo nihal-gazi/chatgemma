@@ -384,19 +384,6 @@ export default function SettingsModal({ isOpen, onClose, onOpenGraphVisualizer }
                   )}
                 </div>
 
-                {knowledgeGraphStats?.typeDistribution && Object.keys(knowledgeGraphStats.typeDistribution).length > 0 && (
-                  <div className="kg-distribution-box">
-                    <div className="kg-dist-title">Entity Categories:</div>
-                    <div className="kg-type-tags">
-                      {Object.entries(knowledgeGraphStats.typeDistribution).map(([type, count]) => (
-                        <span key={type} className="kg-type-tag">
-                          {type}: <strong>{count}</strong>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 <div className="kg-action-box">
                   <button
                     className="btn-modal-action"

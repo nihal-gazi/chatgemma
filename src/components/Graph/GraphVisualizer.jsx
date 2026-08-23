@@ -49,18 +49,11 @@ const TYPE_COLORS = {
   Inactive: [0.373, 0.388, 0.408, 0.4], // #5f6368 (Muted)
 };
 
-const DOMAIN_FILTER_OPTIONS = [
-  { id: "all", label: "All Knowledge" },
+const GRAPH_FILTER_BARS = [
+  { id: "all", label: "All" },
   { id: "user", label: "User KG" },
-  { id: "ai", label: "AI", domainName: "Artificial Intelligence" },
-  { id: "philosophy", label: "Philosophy", domainName: "Philosophy" },
-  { id: "commonsense", label: "Common Sense", domainName: "Common Sense" },
-  { id: "general", label: "General", domainName: "General Knowledge" },
-  { id: "electronics", label: "Electronics", domainName: "Electronics" },
-  { id: "arts", label: "Arts", domainName: "Arts & Aesthetics" },
-  { id: "lifelessons", label: "Life Lessons", domainName: "Life Lessons & Mental Models" },
-  { id: "literature", label: "Literature", domainName: "Literature & Rhetoric" },
-  { id: "culture", label: "Culture", domainName: "Culture & Mythology" },
+  { id: "general", label: "General KG" },
+  { id: "default", label: "Default KG" },
 ];
 
 export default function GraphVisualizer({ isOpen, onClose }) {
@@ -118,22 +111,37 @@ export default function GraphVisualizer({ isOpen, onClose }) {
     let entities = Array.from(entityMap.values());
     let relations = Array.from(relationMap.values());
 
-    // Filter by source / domain
+    // Filter by the 4 bars: All, User KG, General KG, Default KG
     if (filterSource === "user") {
       entities = entities.filter((e) => e.graphSource === "user");
-      relations = relations.filter((r) => r.graphSource === "user");
-    } else if (filterSource !== "all") {
-      const option = DOMAIN_FILTER_OPTIONS.find((opt) => opt.id === filterSource);
-      if (option && option.domainName) {
-        entities = entities.filter(
-          (e) => (e.domain || e.attributes?.domain) === option.domainName
-        );
-        const validEntityIds = new Set(entities.map((e) => e.id));
-        relations = relations.filter(
-          (r) => validEntityIds.has(r.sourceId) && validEntityIds.has(r.targetId)
-        );
-      }
+      const validIds = new Set(entities.map((e) => e.id));
+      relations = relations.filter(
+        (r) => r.graphSource === "user" && validIds.has(r.sourceId) && validIds.has(r.targetId)
+      );
+    } else if (filterSource === "general") {
+      // General dynamic/session entities + user-created general knowledge
+      entities = entities.filter(
+        (e) =>
+          e.graphSource === "general" &&
+          (!e.domain ||
+            e.domain === "Ecosystem" ||
+            (e.sourceSessions && e.sourceSessions.length > 0))
+      );
+      const validIds = new Set(entities.map((e) => e.id));
+      relations = relations.filter(
+        (r) => validIds.has(r.sourceId) && validIds.has(r.targetId)
+      );
+    } else if (filterSource === "default") {
+      // 9 Preloaded default curated domains
+      entities = entities.filter(
+        (e) => e.graphSource === "general" && e.domain && e.domain !== "Ecosystem"
+      );
+      const validIds = new Set(entities.map((e) => e.id));
+      relations = relations.filter(
+        (r) => validIds.has(r.sourceId) && validIds.has(r.targetId)
+      );
     }
+    // "all": show all merged entities and relations
 
     // Calculate node degree (number of connected edges)
     const degreeMap = new Map();
@@ -396,23 +404,54 @@ export default function GraphVisualizer({ isOpen, onClose }) {
     <div className="graph-visualizer-fullscreen">
       {/* Top Header Bar */}
       <div className="graph-topbar">
-        <div className="graph-topbar-left">
-          <button className="btn-graph-back" onClick={onClose} title="Back to Chat">
-            <ArrowLeft size={18} />
-            <span>Back</span>
-          </button>
+        <div className="graph-topbar-header-row">
+          <div className="graph-topbar-left">
+            <button className="btn-graph-back" onClick={onClose} title="Back to Chat">
+              <ArrowLeft size={18} />
+              <span>Back</span>
+            </button>
 
-          <div className="graph-title-block">
-            <span className="graph-title-heading">GraphRAG Knowledge Graph</span>
-            <span className="graph-stats-pill">
-              {graphData.entities.length} Entities • {graphData.relations.length} Relations
-            </span>
+            <div className="graph-title-block">
+              <span className="graph-title-heading">GraphRAG Knowledge Graph</span>
+              <span className="graph-stats-pill">
+                {graphData.entities.length} Entities • {graphData.relations.length} Relations
+              </span>
+            </div>
+          </div>
+
+          {/* Top Right Controls & Search */}
+          <div className="graph-topbar-right">
+            <form onSubmit={handleSearchSubmit} className="graph-search-form">
+              <input
+                type="text"
+                placeholder="Search node..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="graph-search-input"
+              />
+            </form>
+
+            <button
+              className={`graph-action-icon-btn ${is3D ? "active" : ""}`}
+              onClick={handleToggle3D}
+              title={is3D ? "Switch to 2D Mode" : "Switch to 3D Orbit Mode"}
+            >
+              <span style={{ fontSize: "11px", fontWeight: "bold" }}>{is3D ? "3D" : "2D"}</span>
+            </button>
+
+            <button
+              className="graph-action-icon-btn"
+              onClick={handleFitView}
+              title="Fit Graph to View"
+            >
+              <Maximize2 size={16} />
+            </button>
           </div>
         </div>
 
-        {/* Source & Domain Filter Switcher */}
-        <div className="graph-filter-pills-scrollable">
-          {DOMAIN_FILTER_OPTIONS.map((opt) => (
+        {/* 4-Bar Filter Pills */}
+        <div className="graph-filter-pills">
+          {GRAPH_FILTER_BARS.map((opt) => (
             <button
               key={opt.id}
               className={`graph-filter-pill ${filterSource === opt.id ? "active" : ""}`}
@@ -423,35 +462,6 @@ export default function GraphVisualizer({ isOpen, onClose }) {
               <span>{opt.label}</span>
             </button>
           ))}
-        </div>
-
-        {/* Top Right Controls & Search */}
-        <div className="graph-topbar-right">
-          <form onSubmit={handleSearchSubmit} className="graph-search-form">
-            <input
-              type="text"
-              placeholder="Search node..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="graph-search-input"
-            />
-          </form>
-
-          <button
-            className={`graph-action-icon-btn ${is3D ? "active" : ""}`}
-            onClick={handleToggle3D}
-            title={is3D ? "Switch to 2D Mode" : "Switch to 3D Orbit Mode"}
-          >
-            <span style={{ fontSize: "11px", fontWeight: "bold" }}>{is3D ? "3D" : "2D"}</span>
-          </button>
-
-          <button
-            className="graph-action-icon-btn"
-            onClick={handleFitView}
-            title="Fit Graph to View"
-          >
-            <Maximize2 size={16} />
-          </button>
         </div>
       </div>
 
