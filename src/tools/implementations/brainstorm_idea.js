@@ -12,14 +12,13 @@ import {
   computeSemanticSimilarity,
   extractSalientKeywords,
 } from "../../utils/similarity.js";
-import { synthesizeBrainstormWithGemma } from "../../services/brainstormSynthesizer.js";
 
 export const brainstormIdeaTool = {
   name: "brainstorm_idea",
   displayName: "KG Idea Brainstormer",
   iconName: "Sparkles",
   description:
-    "Brainstorms novel, non-obvious ideas and breakthrough hypotheses using Knowledge Graph structural reasoning and Predicate Swapping (randomized edge mutations). Accepts a set of target keywords to retrieve anchor subgraphs using cosine similarity, applies randomized partial or full predicate inversions, and calls Gemma to synthesize a polished, deep proposal. If the graph lacks data, returns an agentic SEARCH_AND_INDEX directive.",
+    "Brainstorms novel ideas by traversing a continuous multi-hop path of length L across the Knowledge Graph starting from keyword-matched anchor nodes, and applying K randomized predicate mutations along that path. Returns the mutated connections list ONLY. The AI model must verify whether a valid idea can be made from the mutated connections; otherwise, re-run brainstorm_idea with different seeds, keywords, or graph lengths.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -431,33 +430,10 @@ export const brainstormIdeaTool = {
       )
       .join(" ↳ ");
 
-    const graphConnection = {
-      technique: "predicate_swap",
-      keywords: rawKeywords,
-      startAnchorNode: startEntity.name,
-      requestedPathLength: maxGraphLength,
-      actualTraversedHops: pathTriples.length,
-      mutatedHopsCount: mutationCount,
-      preservedHopsCount: pathTriples.length - mutationCount,
-      traversedEntities: Array.from(visitedEntities).map(
-        (id) => kgService.entities.get(id)?.name || id
-      ),
-      basePathChain: baseChainStr,
-      mutatedPathChain: mutatedChainStr,
-      mutations,
-      summary: `Traversed ${pathTriples.length}-hop continuous path starting at [${startEntity.name}], with ${mutationCount}/${pathTriples.length} predicates randomly mutated (${mutatedTriplesSummary}) [Seed: ${seed}].`,
-    };
-
-    // 6. Deep Synthesis with Gemma
-    const polishedIdea = await synthesizeBrainstormWithGemma(
-      {
-        keywords: rawKeywords,
-        baseSubgraph,
-        mutatedSubgraph,
-        mutations,
-        targetDomain,
-      },
-      { apiKey, modelId, signal, seed }
+    const mutatedConnectionsList = mutations.map((m) =>
+      m.isMutated
+        ? `[Hop ${m.step}] [${m.source}] ----[${m.mutatedPredicate}]---> [${m.target}] *(MUTATED from ${m.originalPredicate}: ${m.explanation || "Inversion"})*`
+        : `[Hop ${m.step}] [${m.source}] ----[${m.originalPredicate}]---> [${m.target}] *(Preserved Path Context)*`
     );
 
     return {
@@ -468,9 +444,17 @@ export const brainstormIdeaTool = {
       seedUsed: seed,
       requestedPathLength: maxGraphLength,
       actualTraversedHops: pathTriples.length,
-      graphConnection,
-      polishedIdea,
-      summary: `Brainstormed: "${polishedIdea.title}" via ${pathTriples.length}-Hop Path Traversal from [${startEntity.name}] with ${mutationCount} edge mutations [Seed: ${seed}].`,
+      mutatedHopsCount: mutationCount,
+      preservedHopsCount: pathTriples.length - mutationCount,
+      basePathChain: baseChainStr,
+      mutatedPathChain: mutatedChainStr,
+      mutations,
+      mutatedConnectionsList,
+      verificationGuidance:
+        "Verify whether a valid idea can be made or not. Otherwise, re-run the brainstorm tool.",
+      instruction:
+        "Analyze the mutated connections list above. Verify whether a valid, breakthrough idea can be made from these counterfactual relationships. If a valid idea can be synthesized, generate the complete, deep proposal for the user. Otherwise, re-run 'brainstorm_idea' with a different seed, adjusted keywords, or changed max_graph_length.",
+      summary: `Extracted ${pathTriples.length}-hop path from [${startEntity.name}] with ${mutationCount} mutated predicates (${mutatedTriplesSummary}) [Seed: ${seed}]. Verify whether a valid idea can be made or not. Otherwise, re-run the brainstorm tool.`,
     };
   },
 };
