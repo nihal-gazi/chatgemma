@@ -16,7 +16,7 @@ export const knowledgeGraphNodeSearchTool = {
   displayName: "KG Node Semantic Search",
   iconName: "Share2",
   description:
-    "Searches the General Knowledge Graph or User Knowledge Graph for nodes/entities matching a list of keywords using semantic cosine similarity (all-MiniLM-L6 style). Returns top-K matching nodes per keyword with exact names, domains, types, and descriptions. Recommended before brainstorm_idea to discover exact node names.",
+    "Searches the General Knowledge Graph or User Knowledge Graph for nodes/entities matching a list of keywords using semantic cosine similarity (all-MiniLM-L6 style). Returns top-K matching node names ONLY per keyword. Recommended before brainstorm_idea to discover exact node names.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -147,39 +147,31 @@ export const knowledgeGraphNodeSearchTool = {
 
         if (score >= 0.35) {
           scored.push({
-            id: entity.id,
             name: entity.name,
-            domain: entity.domain || entity.attributes?.domain || "General",
-            types: entity.types || ["Concept"],
-            description: entity.description || "",
-            sourceGraph: entity.sourceGraph || "general",
-            score: Number(score.toFixed(4)),
+            score,
           });
         }
       }
 
-      // Sort by score descending and take topK
+      // Sort by score descending and take topK node names
       scored.sort((a, b) => b.score - a.score);
       const topMatches = scored.slice(0, topK);
-      resultsByKeyword[kw] = topMatches;
+      const nodeNames = Array.from(new Set(topMatches.map((m) => m.name)));
+      resultsByKeyword[kw] = nodeNames;
 
-      for (const match of topMatches) {
-        if (!allMatchedNodesMap.has(match.id)) {
-          allMatchedNodesMap.set(match.id, match);
-        }
+      for (const name of nodeNames) {
+        allMatchedNodesMap.set(name.toLowerCase(), name);
       }
     }
 
-    const matchedNodes = Array.from(allMatchedNodesMap.values());
+    const nodes = Array.from(allMatchedNodesMap.values());
 
     return {
       status: "success",
       graph_target: graphTarget,
-      searchedKeywords: rawKeywords,
-      resultsByKeyword,
-      matchedNodesCount: matchedNodes.length,
-      matchedNodes,
-      summary: `Found ${matchedNodes.length} matching nodes across ${rawKeywords.length} keywords in ${graphTarget.toUpperCase()} KG.`,
+      matchedNodesByKeyword: resultsByKeyword,
+      nodes,
+      summary: `Found ${nodes.length} matching node names across ${rawKeywords.length} keywords in ${graphTarget.toUpperCase()} KG.`,
     };
   },
 };
