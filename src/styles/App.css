@@ -3123,7 +3123,8 @@ input:checked + .slider:before {
 }
 
 /* Filter Pills */
-.graph-filter-pills {
+.graph-filter-pills,
+.graph-filter-pills-scrollable {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3131,6 +3132,13 @@ input:checked + .slider:before {
   padding: 4px;
   border-radius: var(--radius-full);
   border: 1px solid var(--gemini-border);
+  overflow-x: auto;
+  max-width: calc(100vw - 420px);
+  scrollbar-width: none;
+}
+
+.graph-filter-pills-scrollable::-webkit-scrollbar {
+  display: none;
 }
 
 .graph-filter-pill {
@@ -3145,6 +3153,8 @@ input:checked + .slider:before {
   font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: none !important; /* Snappy hover */
 }
 

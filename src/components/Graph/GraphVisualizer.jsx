@@ -16,6 +16,21 @@ import {
   userKnowledgeGraphInstance,
 } from "../../services/knowledgeGraph.js";
 
+// Domain Chromatic Colors matching Gemini aesthetic
+export const DOMAIN_COLORS = {
+  "Common Sense": [0.35, 0.75, 0.55, 1.0], // Sage Green (#59bf8c)
+  "Artificial Intelligence": [0.15, 0.85, 0.65, 1.0], // Emerald Green (#26d9a6)
+  "General Knowledge": [0.25, 0.65, 0.95, 1.0], // Sky Azure (#40a6f2)
+  "Electronics": [0.18, 0.82, 0.95, 1.0], // Electric Cyan (#2ed1f2)
+  "Arts & Aesthetics": [0.95, 0.45, 0.65, 1.0], // Rose Pink (#f273a6)
+  "Life Lessons & Mental Models": [0.98, 0.72, 0.25, 1.0], // Gold Amber (#fab840)
+  "Literature & Rhetoric": [0.65, 0.50, 0.95, 1.0], // Lavender Violet (#a680f2)
+  "Philosophy": [0.95, 0.55, 0.35, 1.0], // Warm Ochre (#f28c59)
+  "Culture & Mythology": [0.85, 0.40, 0.85, 1.0], // Royal Magenta (#d966d9)
+  "Ecosystem": [0.40, 0.60, 0.95, 1.0], // Gemini Blue (#6699f2)
+  "User KG": [0.608, 0.447, 0.796, 1.0], // Gemini Sparkle Purple (#9b72cb)
+};
+
 // Palette matching Gemini UI theme
 const TYPE_COLORS = {
   USER_KG: [0.608, 0.447, 0.796, 1.0], // #9b72cb (Gemini Sparkle Purple)
@@ -34,13 +49,27 @@ const TYPE_COLORS = {
   Inactive: [0.373, 0.388, 0.408, 0.4], // #5f6368 (Muted)
 };
 
+const DOMAIN_FILTER_OPTIONS = [
+  { id: "all", label: "All Knowledge" },
+  { id: "user", label: "User KG" },
+  { id: "ai", label: "AI", domainName: "Artificial Intelligence" },
+  { id: "philosophy", label: "Philosophy", domainName: "Philosophy" },
+  { id: "commonsense", label: "Common Sense", domainName: "Common Sense" },
+  { id: "general", label: "General", domainName: "General Knowledge" },
+  { id: "electronics", label: "Electronics", domainName: "Electronics" },
+  { id: "arts", label: "Arts", domainName: "Arts & Aesthetics" },
+  { id: "lifelessons", label: "Life Lessons", domainName: "Life Lessons & Mental Models" },
+  { id: "literature", label: "Literature", domainName: "Literature & Rhetoric" },
+  { id: "culture", label: "Culture", domainName: "Culture & Mythology" },
+];
+
 export default function GraphVisualizer({ isOpen, onClose }) {
   const containerRef = useRef(null);
   const graphRef = useRef(null);
 
   const [selectedNode, setSelectedNode] = useState(null);
   const [is3D, setIs3D] = useState(false);
-  const [filterSource, setFilterSource] = useState("all"); // 'all', 'user', 'general'
+  const [filterSource, setFilterSource] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
   // 1. Ingest and merge nodes & relations from General KG + User KG
@@ -89,13 +118,21 @@ export default function GraphVisualizer({ isOpen, onClose }) {
     let entities = Array.from(entityMap.values());
     let relations = Array.from(relationMap.values());
 
-    // Filter by source if selected
+    // Filter by source / domain
     if (filterSource === "user") {
       entities = entities.filter((e) => e.graphSource === "user");
       relations = relations.filter((r) => r.graphSource === "user");
-    } else if (filterSource === "general") {
-      entities = entities.filter((e) => e.graphSource === "general");
-      relations = relations.filter((r) => r.graphSource === "general");
+    } else if (filterSource !== "all") {
+      const option = DOMAIN_FILTER_OPTIONS.find((opt) => opt.id === filterSource);
+      if (option && option.domainName) {
+        entities = entities.filter(
+          (e) => (e.domain || e.attributes?.domain) === option.domainName
+        );
+        const validEntityIds = new Set(entities.map((e) => e.id));
+        relations = relations.filter(
+          (r) => validEntityIds.has(r.sourceId) && validEntityIds.has(r.targetId)
+        );
+      }
     }
 
     // Calculate node degree (number of connected edges)
@@ -179,8 +216,13 @@ export default function GraphVisualizer({ isOpen, onClose }) {
       } else if (entity.graphSource === "user") {
         color = TYPE_COLORS.USER_KG;
       } else {
-        const mainType = entity.types?.[0] || "Default";
-        color = TYPE_COLORS[mainType] || TYPE_COLORS.Default;
+        const dom = entity.domain || entity.attributes?.domain;
+        if (dom && DOMAIN_COLORS[dom]) {
+          color = DOMAIN_COLORS[dom];
+        } else {
+          const mainType = entity.types?.[0] || "Default";
+          color = TYPE_COLORS[mainType] || TYPE_COLORS.Default;
+        }
       }
 
       pointColors[i * 4] = color[0];
@@ -368,28 +410,19 @@ export default function GraphVisualizer({ isOpen, onClose }) {
           </div>
         </div>
 
-        {/* Source Filter Switcher */}
-        <div className="graph-filter-pills">
-          <button
-            className={`graph-filter-pill ${filterSource === "all" ? "active" : ""}`}
-            onClick={() => setFilterSource("all")}
-          >
-            All
-          </button>
-          <button
-            className={`graph-filter-pill ${filterSource === "user" ? "active" : ""}`}
-            onClick={() => setFilterSource("user")}
-          >
-            <Sparkles size={12} />
-            User KG
-          </button>
-          <button
-            className={`graph-filter-pill ${filterSource === "general" ? "active" : ""}`}
-            onClick={() => setFilterSource("general")}
-          >
-            <Share2 size={12} />
-            General KG
-          </button>
+        {/* Source & Domain Filter Switcher */}
+        <div className="graph-filter-pills-scrollable">
+          {DOMAIN_FILTER_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              className={`graph-filter-pill ${filterSource === opt.id ? "active" : ""}`}
+              onClick={() => setFilterSource(opt.id)}
+            >
+              {opt.id === "user" && <Sparkles size={12} />}
+              {opt.id === "all" && <Share2 size={12} />}
+              <span>{opt.label}</span>
+            </button>
+          ))}
         </div>
 
         {/* Top Right Controls & Search */}
@@ -466,13 +499,27 @@ export default function GraphVisualizer({ isOpen, onClose }) {
         <div className="graph-node-card">
           <div className="graph-node-card-header">
             <div className="graph-node-title-group">
-              <span
-                className={`graph-source-badge ${
-                  selectedNode.graphSource === "user" ? "user-kg" : "general-kg"
-                }`}
-              >
-                {selectedNode.graphSource === "user" ? "User Knowledge" : "General Knowledge"}
-              </span>
+              <div className="graph-badge-row" style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                <span
+                  className={`graph-source-badge ${
+                    selectedNode.graphSource === "user" ? "user-kg" : "general-kg"
+                  }`}
+                >
+                  {selectedNode.graphSource === "user" ? "User Knowledge" : "General Knowledge"}
+                </span>
+                {(selectedNode.domain || selectedNode.attributes?.domain) && (
+                  <span
+                    className="graph-source-badge"
+                    style={{
+                      background: "rgba(255, 255, 255, 0.08)",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      color: "#e2e8f0",
+                    }}
+                  >
+                    {selectedNode.domain || selectedNode.attributes?.domain}
+                  </span>
+                )}
+              </div>
               <h3 className="graph-node-name">{selectedNode.name}</h3>
             </div>
             <button

@@ -1,6 +1,7 @@
 import { CONFIG } from "../config/config.js";
 import { fetchWithRateLimit } from "./api.js";
 import { extractJsonFromText, extractFileKnowledgeEntities } from "../utils/index.js";
+import { DEFAULT_PRELOADED_DATASETS, KNOWLEDGE_DOMAINS, PRELOADED_STATS } from "../data/knowledge/index.js";
 
 const STORAGE_KEY = "chatgemma_knowledge_graph_v1";
 
@@ -368,6 +369,25 @@ export class KnowledgeGraphService {
         score = 40;
       }
 
+      // Multi-word token overlap scoring (e.g., "quantum entanglement", "dante divine comedy")
+      const queryTokens = cleanQuery.split(/[\s,._\-+/]+/).filter((t) => t.length > 2);
+      if (queryTokens.length > 0) {
+        let matchedTokens = 0;
+        for (const token of queryTokens) {
+          if (entityNameLower.includes(token)) {
+            matchedTokens += 2;
+          } else if (entity.aliases?.some((a) => a.toLowerCase().includes(token))) {
+            matchedTokens += 1.5;
+          } else if (entityDescLower.includes(token)) {
+            matchedTokens += 1;
+          }
+        }
+        if (matchedTokens > 0) {
+          const tokenRatioScore = (matchedTokens / (queryTokens.length * 2)) * 55;
+          score = Math.max(score, tokenRatioScore);
+        }
+      }
+
       // Check type filter if requested
       if (allowedTypes && entity.types) {
         const hasType = entity.types.some((t) => allowedTypes.includes(t.toLowerCase()));
@@ -621,71 +641,67 @@ Return ONLY a JSON object with this exact structure:
    * Ingest and bootstrap default core ecosystem knowledge.
    */
   bootstrapDefaults() {
-    if (this.entities.size === 0) {
-      // 1. Nihal Gazi
-      const nihal = this.addEntity({
-        name: "Nihal Gazi",
-        types: ["Person", "Researcher"],
-        description: "AI researcher, developer, and systems architect based in India; founder of KindSynapse and creator of ChatGemma.",
-        aliases: ["Nihal", "nihal-gazi", "Creator"],
-        attributes: { role: "AI Researcher", location: "India" },
-      });
+    // Core Founders & Ecosystem nodes
+    const nihal = this.addEntity({
+      name: "Nihal Gazi",
+      types: ["Person", "Researcher"],
+      description: "AI researcher, developer, and systems architect based in India; founder of KindSynapse and creator of ChatGemma.",
+      aliases: ["Nihal", "nihal-gazi", "Creator"],
+      attributes: { role: "AI Researcher", location: "India", domain: "Ecosystem" },
+    });
 
-      // 2. KindSynapse
-      const kindSynapse = this.addEntity({
-        name: "KindSynapse",
-        types: ["Organization", "Project"],
-        description: "Research organization and AI lab creating empathetic, modular artificial intelligence architectures.",
-        aliases: ["Kind Synapse"],
-      });
+    const kindSynapse = this.addEntity({
+      name: "KindSynapse",
+      types: ["Organization", "Project"],
+      description: "Research organization and AI lab creating empathetic, modular artificial intelligence architectures.",
+      aliases: ["Kind Synapse"],
+      attributes: { domain: "Ecosystem" },
+    });
 
-      // 3. ChatGemma
-      const chatGemma = this.addEntity({
-        name: "ChatGemma",
-        types: ["Project", "Technology"],
-        description: "An advanced, open-source AI assistant interface powered by Google Gemma 4 with native thinking and tool calling.",
-        aliases: ["Chat Gemma"],
-      });
+    const chatGemma = this.addEntity({
+      name: "ChatGemma",
+      types: ["Project", "Technology"],
+      description: "An advanced, open-source AI assistant interface powered by Google Gemma 4 with native thinking and tool calling.",
+      aliases: ["Chat Gemma"],
+      attributes: { domain: "Ecosystem" },
+    });
 
-      // 4. Gemma 4
-      const gemma4 = this.addEntity({
-        name: "Gemma 4",
-        types: ["Technology", "Concept"],
-        description: "Google DeepMind's state-of-the-art open language model featuring native internal thinking tokens and tool execution.",
-        aliases: ["Gemma-4", "gemma-4-31b-it"],
-      });
+    const gemma4 = this.addEntity({
+      name: "Gemma 4",
+      types: ["Technology", "Concept"],
+      description: "Google DeepMind's state-of-the-art open language model featuring native internal thinking tokens and tool execution.",
+      aliases: ["Gemma-4", "gemma-4-31b-it"],
+      attributes: { domain: "Artificial Intelligence" },
+    });
 
-      // Relationships
-      this.addRelation({
-        source: nihal,
-        predicate: "CREATED",
-        target: kindSynapse,
-        description: "Nihal Gazi founded and established KindSynapse.",
-      });
+    // Core Relationships
+    this.addRelation({
+      source: nihal,
+      predicate: "CREATED",
+      target: kindSynapse,
+      description: "Nihal Gazi founded and established KindSynapse.",
+    });
 
-      this.addRelation({
-        source: nihal,
-        predicate: "CREATED",
-        target: chatGemma,
-        description: "Nihal Gazi designed and developed ChatGemma.",
-      });
+    this.addRelation({
+      source: nihal,
+      predicate: "CREATED",
+      target: chatGemma,
+      description: "Nihal Gazi designed and developed ChatGemma.",
+    });
 
-      this.addRelation({
-        source: kindSynapse,
-        predicate: "WORKS_ON",
-        target: chatGemma,
-        description: "KindSynapse maintains and develops ChatGemma as a core research platform.",
-      });
+    this.addRelation({
+      source: kindSynapse,
+      predicate: "WORKS_ON",
+      target: chatGemma,
+      description: "KindSynapse maintains and develops ChatGemma as a core research platform.",
+    });
 
-      this.addRelation({
-        source: chatGemma,
-        predicate: "USES",
-        target: gemma4,
-        description: "ChatGemma is powered by Google Gemma 4 with deep reasoning capabilities.",
-      });
-
-      this.saveToStorage();
-    }
+    this.addRelation({
+      source: chatGemma,
+      predicate: "USES",
+      target: gemma4,
+      description: "ChatGemma is powered by Google Gemma 4 with deep reasoning capabilities.",
+    });
   }
 
   /**
@@ -716,6 +732,7 @@ Return ONLY a JSON object with this exact structure:
     let activeEntitiesCount = 0;
     let inactiveEntitiesCount = 0;
     const typeDistribution = {};
+    const domainDistribution = {};
 
     for (const entity of this.entities.values()) {
       if (entity.isActive !== false) {
@@ -723,6 +740,8 @@ Return ONLY a JSON object with this exact structure:
         for (const t of entity.types || ["Concept"]) {
           typeDistribution[t] = (typeDistribution[t] || 0) + 1;
         }
+        const dom = entity.domain || entity.attributes?.domain || "General";
+        domainDistribution[dom] = (domainDistribution[dom] || 0) + 1;
       } else {
         inactiveEntitiesCount++;
       }
@@ -749,7 +768,9 @@ Return ONLY a JSON object with this exact structure:
       inactiveEntities: inactiveEntitiesCount,
       inactiveRelations: inactiveRelationsCount,
       typeDistribution,
+      domainDistribution,
       predicateDistribution,
+      preloadedStats: PRELOADED_STATS,
       lastUpdated: new Date().toISOString(),
     };
   }
@@ -790,24 +811,56 @@ Return ONLY a JSON object with this exact structure:
 
   /**
    * Clears all entities and relations from the graph.
+   * If autoSeed is true, re-seeds default knowledge domains.
    */
   clearGraph() {
     this.entities.clear();
     this.relations = [];
-    this.saveToStorage();
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(this.storageKey);
+    }
+    if (this.autoSeed) {
+      this.loadFromStorage();
+    }
   }
 
   /**
-   * Persistence: Save to LocalStorage
+   * Persistence: Save to LocalStorage.
+   * For the massive preloaded General Knowledge Graph, saves only user mutations, session extractions,
+   * and soft-deletes as a delta layer to prevent localStorage QuotaExceededError (~5MB browser limit).
    */
   saveToStorage() {
     try {
       if (typeof window !== "undefined" && window.localStorage) {
-        const data = {
-          entities: Array.from(this.entities.values()),
-          relations: this.relations,
-        };
-        window.localStorage.setItem(this.storageKey, JSON.stringify(data));
+        if (this.autoSeed) {
+          // Delta serialization for General KG
+          const deltaEntities = [];
+          for (const entity of this.entities.values()) {
+            const isUserCreated = (entity.sourceSessions && entity.sourceSessions.length > 0) || !entity.attributes?.domain;
+            const isMutatedDefault = entity.isActive === false;
+            if (isUserCreated || isMutatedDefault) {
+              deltaEntities.push(entity);
+            }
+          }
+
+          const deltaRelations = this.relations.filter(
+            (rel) => rel.sourceSession || rel.isActive === false || !rel.domain
+          );
+
+          const deltaPayload = {
+            isDelta: true,
+            entities: deltaEntities,
+            relations: deltaRelations,
+          };
+          window.localStorage.setItem(this.storageKey, JSON.stringify(deltaPayload));
+        } else {
+          // Full serialization for User KG
+          const data = {
+            entities: Array.from(this.entities.values()),
+            relations: this.relations,
+          };
+          window.localStorage.setItem(this.storageKey, JSON.stringify(data));
+        }
       }
     } catch (e) {
       console.warn(`[KnowledgeGraph] LocalStorage write error (${this.storageKey}):`, e);
@@ -815,9 +868,28 @@ Return ONLY a JSON object with this exact structure:
   }
 
   /**
-   * Persistence: Load from LocalStorage
+   * Persistence: Load from LocalStorage and bundled datasets.
    */
   loadFromStorage() {
+    // 1. If autoSeed is true, populate all 9 curated knowledge domains in memory
+    if (this.autoSeed && Array.isArray(DEFAULT_PRELOADED_DATASETS)) {
+      for (const dataset of DEFAULT_PRELOADED_DATASETS) {
+        if (dataset && Array.isArray(dataset.entities)) {
+          for (const entity of dataset.entities) {
+            this.entities.set(entity.id, { ...entity });
+          }
+        }
+        if (dataset && Array.isArray(dataset.relations)) {
+          for (const rel of dataset.relations) {
+            this.relations.push({ ...rel });
+          }
+        }
+      }
+      // Core Ecosystem bootstrap
+      this.bootstrapDefaults();
+    }
+
+    // 2. Load user mutations / delta from LocalStorage
     try {
       if (typeof window !== "undefined" && window.localStorage) {
         const raw = window.localStorage.getItem(this.storageKey);
@@ -829,7 +901,14 @@ Return ONLY a JSON object with this exact structure:
             }
           }
           if (Array.isArray(data.relations)) {
-            this.relations = data.relations;
+            for (const rel of data.relations) {
+              const existingIdx = this.relations.findIndex((r) => r.id === rel.id);
+              if (existingIdx >= 0) {
+                this.relations[existingIdx] = rel;
+              } else {
+                this.relations.push(rel);
+              }
+            }
           }
         }
       }
@@ -846,4 +925,6 @@ Return ONLY a JSON object with this exact structure:
 // Global Singleton Instances
 export const knowledgeGraphInstance = new KnowledgeGraphService("chatgemma_knowledge_graph_v1", true);
 export const userKnowledgeGraphInstance = new KnowledgeGraphService("chatgemma_user_knowledge_graph_v1", false);
+export { DEFAULT_PRELOADED_DATASETS, KNOWLEDGE_DOMAINS, PRELOADED_STATS };
+
 
