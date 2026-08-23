@@ -42,43 +42,47 @@ export async function synthesizeBrainstormWithGemma(
 
   const kwList = Array.isArray(keywords) && keywords.length > 0 ? keywords.join(", ") : (prompt || "General Concept");
 
-  // Format base and mutated subgraphs
+  // Format base and mutated continuous path traversal chains
   let baseStr = "";
   let mutatedStr = "";
 
   if (baseSubgraph && baseSubgraph.length > 0) {
-    baseStr = baseSubgraph.map((t) => `[${t.sourceName}] ----[${t.predicate}]---> [${t.targetName}]`).join("\n");
+    baseStr = baseSubgraph
+      .map(
+        (t, idx) =>
+          `[Hop ${idx + 1}] [${t.sourceName}] ----[${t.predicate}]---> [${t.targetName}]`
+      )
+      .join("\n   ↳ ");
   } else if (baseTriple) {
     baseStr = `[${baseTriple.subject}] ----[${baseTriple.predicate}]---> [${baseTriple.object}]`;
   }
 
   if (mutations && mutations.length > 0) {
     mutatedStr = mutations
-      .map((m) => {
+      .map((m, idx) => {
         if (m.isMutated) {
-          return `[${m.source}] ----[${m.mutatedPredicate}]---> [${m.target}] *(MUTATED from ${m.originalPredicate}: ${m.explanation || "Inversion"})*`;
+          return `[Hop ${m.step || idx + 1}] [${m.source}] ----[${m.mutatedPredicate}]---> [${m.target}] *(MUTATED from ${m.originalPredicate}: ${m.explanation || "Inversion"})*`;
         }
-        return `[${m.source}] ----[${m.originalPredicate}]---> [${m.target}] *(Preserved Context)*`;
+        return `[Hop ${m.step || idx + 1}] [${m.source}] ----[${m.originalPredicate}]---> [${m.target}] *(Preserved Path Context)*`;
       })
-      .join("\n");
+      .join("\n   ↳ ");
   } else if (mutation) {
     mutatedStr = `[${mutation.subject}] ----[${mutation.mutatedPredicate}]---> [${mutation.object}]`;
   }
 
   if (!cleanKey) {
-    const firstMut = mutations.find((m) => m.isMutated) || mutation;
     return {
       title: "Generated Hypothesis",
-      synthesis: `Concept based on mutating Knowledge Graph subgraph for [${kwList}] (Add an API key in Settings to enable automated in-tool deep synthesis).\n\nMutated Subgraph:\n${mutatedStr}`,
+      synthesis: `Concept based on mutating Knowledge Graph path for [${kwList}] (Add an API key in Settings to enable automated in-tool deep synthesis).\n\nMutated Path Traversal:\n${mutatedStr}`,
       model: "offline-fallback",
-      connectionSummary: `Connection: Subgraph for ${kwList} with predicate swaps:\n${mutatedStr}`,
+      connectionSummary: `Connection: Multi-hop path for ${kwList} with predicate swaps:\n${mutatedStr}`,
     };
   }
 
-  const connectionSummary = `Knowledge Graph Subgraph Mutation:\nBase Facts:\n${baseStr}\n\nMutated Subgraph:\n${mutatedStr}`;
+  const connectionSummary = `Knowledge Graph Traversed Path & Mutations:\nBase Continuous Path:\n   ↳ ${baseStr}\n\nMutated Counterfactual Path:\n   ↳ ${mutatedStr}`;
 
   const systemPrompt = `You are an elite inventive engineer and futurist AI for ChatGemma.
-Your task is to take a set of counter-factual relationships generated from Knowledge Graph edge mutations (randomized predicate swaps) and invent a high-impact, technologically or conceptually viable breakthrough idea.`;
+Your task is to take a continuous multi-hop causal/relational chain traversed across the Knowledge Graph, where K predicates along the path have been counter-factually mutated, and invent a high-impact, technologically or conceptually viable breakthrough idea.`;
 
   const userPrompt = `Target Keywords / Focus Areas: ${kwList}${targetDomain ? ` (Target Domain: ${targetDomain})` : ""}
 
