@@ -17,6 +17,9 @@ import { userKnowledgeGraphSearchTool } from "./implementations/user_knowledge_g
 import { userKnowledgeGraphWriteTool } from "./implementations/user_knowledge_graph_write.js";
 import { userKnowledgeGraphDeleteTool } from "./implementations/user_knowledge_graph_delete.js";
 
+import { sampleCodeQueryTool } from "./implementations/sample_code_query.js";
+import { getCodeSampleTool } from "./implementations/get_code_sample.js";
+
 // Register Custom Function Calling Tools
 toolRegistry.register(grepTool);
 toolRegistry.register(fileSearchTool);
@@ -28,6 +31,8 @@ toolRegistry.register(knowledgeGraphDeleteTool);
 toolRegistry.register(userKnowledgeGraphSearchTool);
 toolRegistry.register(userKnowledgeGraphWriteTool);
 toolRegistry.register(userKnowledgeGraphDeleteTool);
+toolRegistry.register(sampleCodeQueryTool);
+toolRegistry.register(getCodeSampleTool);
 
 export { toolRegistry };
 export {
@@ -41,6 +46,8 @@ export {
   userKnowledgeGraphSearchTool,
   userKnowledgeGraphWriteTool,
   userKnowledgeGraphDeleteTool,
+  sampleCodeQueryTool,
+  getCodeSampleTool,
 };
 
 

@@ -5,6 +5,7 @@
 
 import { CONFIG } from "../config/config.js";
 import { toolRegistry } from "../tools/index.js";
+import { synapserServiceInstance } from "./synapser.js";
 import {
   estimateTokens,
   extractChatByTokenLimit,
@@ -313,6 +314,7 @@ export class GemmaApiService {
       modelId: rawModelName,
       signal: this.abortController.signal,
       apiService: this,
+      synapser: synapserServiceInstance,
     };
     const thinkingLevel = this.modelConfig.thinkingLevel || "HIGH";
     const endpoint = `${CONFIG.apiBaseUrl}/${rawModelName}:streamGenerateContent?key=${encodeURIComponent(
@@ -368,15 +370,18 @@ PROTOCOL:
      * 'random_pair': For unexpected cross-domain breakthrough discoveries. Call 'brainstorm_idea' (mode: 'random_pair', k_pairs: K, seed: S) to generate K pairs of random nodes between which there is NO connection in the graph, connected by a novel random predicate.
    - Verification: Inspect the returned mutated connections or random pairs. Verify whether a valid, high-impact idea can be engineered.
    - Synthesis or Retry: If a valid idea can be made, synthesize it thoroughly for the user; otherwise, re-run 'brainstorm_idea' with a different seed, mode, or adjusted parameters.
-2. KNOWLEDGE DELETION & FORGETTING (DUAL-GRAPH REQUIREMENT):
+2. SYNAPSER CODE RETRIEVAL (HALLUCINATION-FREE CODE DIRECTIVE):
+   - When writing, modifying, or refactoring code involving third-party libraries (e.g. PyTorch, Gradio, Transformers, FastAPI, etc.), ALWAYS call 'sample_code_query' first to discover verified boilerplate candidates.
+   - Then call 'get_code_sample' with the matching snippet_id to retrieve verified ground-truth code, dependencies, and architectural documentation before generating your solution.
+3. KNOWLEDGE DELETION & FORGETTING (DUAL-GRAPH REQUIREMENT):
    - When knowledge deletion or forgetting is requested or required, you MUST check and execute deletion across BOTH 'user_knowledge_graph_delete' (User KG) AND 'knowledge_graph_delete' (General KG) to guarantee that outdated or unwanted entities/relations are fully removed across both knowledge stores (which also synchronizes user.md).
-3. Use available tools (knowledge_graph_node_search, brainstorm_idea, file_search, user_knowledge_graph_search, user_knowledge_graph_write, user_knowledge_graph_delete, knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) whenever querying uploaded files/documents, learned knowledge, saving facts, deleting items, web search grounding, computation, or history is needed.
-4. Use file_search to inspect, search, or read full contents of uploaded files, documents, images, and attached code.
-5. Use user_knowledge_graph_search, user_knowledge_graph_write, and user_knowledge_graph_delete for USER personal preferences, user identity, workflows, personal tools, and user projects. (Writing/deleting here automatically synchronizes user.md).
-6. Use knowledge_search, knowledge_graph_write, and knowledge_graph_delete for general world knowledge, domain concepts, external frameworks, and shared project knowledge.
-7. Use soft-deletion (isActive = false) via delete tools when data becomes outdated.
-8. Ground responses in user preferences, workflows, constraints outlined in the User Personalization Profile (user.md), and attached multimodal files.
-9. Synthesize all reasoning and tool results into a clear, helpful final response.`;
+4. Use available tools (sample_code_query, get_code_sample, knowledge_graph_node_search, brainstorm_idea, file_search, user_knowledge_graph_search, user_knowledge_graph_write, user_knowledge_graph_delete, knowledge_search, knowledge_graph_write, knowledge_graph_delete, Google Search, Code Execution, Grep) whenever querying uploaded files/documents, learned knowledge, retrieving verified code samples, saving facts, deleting items, web search grounding, computation, or history is needed.
+5. Use file_search to inspect, search, or read full contents of uploaded files, documents, images, and attached code.
+6. Use user_knowledge_graph_search, user_knowledge_graph_write, and user_knowledge_graph_delete for USER personal preferences, user identity, workflows, personal tools, and user projects. (Writing/deleting here automatically synchronizes user.md).
+7. Use knowledge_search, knowledge_graph_write, and knowledge_graph_delete for general world knowledge, domain concepts, external frameworks, and shared project knowledge.
+8. Use soft-deletion (isActive = false) via delete tools when data becomes outdated.
+9. Ground responses in user preferences, workflows, constraints outlined in the User Personalization Profile (user.md), and attached multimodal files.
+10. Synthesize all reasoning and tool results into a clear, helpful final response.`;
 
     // 4. Calculate Dynamic Context Budget (Target total input <= 16,000 tokens)
     const systemPromptTokens = estimateTokens(fullSystemInstruction);

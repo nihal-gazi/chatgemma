@@ -1751,6 +1751,255 @@
   color: #93c5fd;
 }
 
+/* ==========================================================================
+   Synapser Code Snippet Retrieval Specialized GUI Tool Styles
+   ========================================================================== */
+
+.synapser-gui-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.synapser-candidates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.synapser-candidate-card {
+  background: #111214;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 3px solid #60a5fa;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.synapser-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.synapser-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.synapser-cand-title {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.synapser-meta-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.synapser-lib-tag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: rgba(96, 165, 250, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+
+.synapser-cat-tag {
+  font-size: 0.68rem;
+  background: rgba(168, 85, 247, 0.15);
+  color: #d8b4fe;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.synapser-score-tag {
+  font-size: 0.66rem;
+  color: var(--gemini-text-muted);
+}
+
+.synapser-id-badge {
+  font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #cbd5e1;
+}
+
+.synapser-cand-desc {
+  font-size: 0.76rem;
+  color: var(--gemini-text-secondary);
+  line-height: 1.4;
+}
+
+.synapser-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.synapser-tag-pill {
+  font-size: 0.66rem;
+  color: var(--gemini-text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Get Code Sample View */
+.synapser-snippet-header-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.synapser-snippet-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.synapser-snippet-summary {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--gemini-text-secondary);
+  line-height: 1.4;
+}
+
+.synapser-deps-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.synapser-deps-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--gemini-text-muted);
+  text-transform: uppercase;
+}
+
+.synapser-dep-pill {
+  font-size: 0.68rem;
+  background: rgba(52, 211, 153, 0.1);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+}
+
+.synapser-code-viewer {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0d0e10;
+}
+
+.synapser-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #161719;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.synapser-code-lang {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--gemini-text-muted);
+  letter-spacing: 0.5px;
+}
+
+.synapser-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: var(--gemini-text-secondary);
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.synapser-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.synapser-copied-icon {
+  color: #34d399;
+}
+
+.synapser-code-pre {
+  margin: 0;
+  padding: 12px;
+  max-height: 420px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: #f1f5f9;
+}
+
+.synapser-arch-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #0d0e10;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.synapser-arch-text {
+  font-size: 0.76rem;
+  color: #cbd5e1;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.synapser-doc-text {
+  font-size: 0.74rem;
+  color: var(--gemini-text-muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+}
+
+.synapser-doc-text pre {
+  margin: 4px 0 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: #94a3b8;
+  white-space: pre-wrap;
+}
+
 /* Personalization user.md Styles */
 .modal-textarea-input {
   width: 100%;

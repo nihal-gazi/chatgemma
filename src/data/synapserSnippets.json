@@ -1,0 +1,176 @@
+[
+  {
+    "dependencies": [
+      "gradio>=4.0.0"
+    ],
+    "tags": [
+      "gradio",
+      "blocks",
+      "layout",
+      "tabs",
+      "event_chaining",
+      "accordion",
+      "reactive"
+    ],
+    "id": "gradio_blocks_layout_events",
+    "title": "Gradio Advanced Blocks Layout with Dynamic Tabs and Event Chaining",
+    "library": "gradio",
+    "category": "ui",
+    "language": "python",
+    "min_version": "4.0.0",
+    "very_short_desc": "Production Gradio Blocks application layout with multi-tab structure, event chaining, and dynamic state updates.",
+    "short_desc": "A complete Gradio UI boilerplate demonstrating advanced Blocks architecture, responsive Row/Column layouts, Tabs, Accordions, and chained event listeners with state management.",
+    "documentation": "Use `with gr.Blocks() as demo:` context manager.\nEvent triggers support chaining: `btn.click(...).then(...)`.\nUse `gr.State()` for session-level persistent state across requests.",
+    "long_desc": "This code provides a clean, production-grade template for building complex Gradio user interfaces using `gr.Blocks`.\n\nKey Architectural Highlights:\n1. **Hierarchical Layout**: Combines `gr.Tabs`, `gr.TabItem`, `gr.Accordion`, `gr.Row`, and `gr.Column` for a structured dashboard interface.\n2. **Event Chaining**: Demonstrates how `.then()` chaining works to update loading statuses before executing heavier backend processing.\n3. **Session State Handling**: Utilizes `gr.State` to maintain per-user session memory without leaking variables across concurrent user connections.\n4. **Conditional Visibility**: Shows how to dynamically toggle component visibility (`gr.update(visible=True)`).",
+    "code": "import gradio as gr\nimport time\nfrom typing import Tuple, List\n\ndef calculate_metrics(text_input: str, factor: float, state: List[str]) -> Tuple[str, str, List[str]]:\n    \"\"\"Simulate analytical model run.\"\"\"\n    time.sleep(0.5)\n    word_count = len(text_input.split())\n    computed_score = round(word_count * factor, 2)\n    \n    # Update user session state\n    new_state = state + [f\"Score: {computed_score}\"]\n    summary = f\"Processed '{text_input[:30]}...' -> Calculated Score: {computed_score}\"\n    history_str = \"\\n\".join(new_state)\n    return summary, history_str, new_state\n\ndef reset_session() -> Tuple[str, float, str, str, List[str]]:\n    \"\"\"Clear all inputs and reset state.\"\"\"\n    return \"\", 1.0, \"Ready for analysis.\", \"\", []\n\nwith gr.Blocks(title=\"Advanced Analytics Dashboard\", theme=gr.themes.Soft()) as demo:\n    session_state = gr.State(value=[])\n\n    gr.Markdown(\"# 📊 Model Analytics & Configuration Dashboard\")\n    \n    with gr.Tabs():\n        # Tab 1: Primary Inference\n        with gr.TabItem(\"🚀 Inference & Execution\", id=1):\n            with gr.Row():\n                with gr.Column(scale=2):\n                    input_text = gr.Textbox(\n                        lines=4,\n                        placeholder=\"Enter text or prompts for batch evaluation...\",\n                        label=\"Input Text\"\n                    )\n                    with gr.Accordion(\"⚙️ Hyperparameters & Controls\", open=False):\n                        scale_factor = gr.Slider(\n                            minimum=0.1,\n                            maximum=5.0,\n                            value=1.5,\n                            step=0.1,\n                            label=\"Scaling Factor\"\n                        )\n                    \n                    with gr.Row():\n                        run_btn = gr.Button(\"▶ Run Analysis\", variant=\"primary\")\n                        clear_btn = gr.Button(\"🔄 Reset\", variant=\"secondary\")\n\n                with gr.Column(scale=2):\n                    status_banner = gr.Textbox(\n                        label=\"Status & Summary\",\n                        value=\"Ready for analysis.\",\n                        interactive=False\n                    )\n                    output_log = gr.TextArea(\n                        label=\"Session Execution Log\",\n                        interactive=False,\n                        lines=6\n                    )\n\n        # Tab 2: System Documentation\n        with gr.TabItem(\"📖 Documentation & Settings\", id=2):\n            gr.Markdown(\"### Application Configuration\")\n            gr.Markdown(\"- Engine: v2.4.0\\n- Framework: Gradio 4+\\n- Session State: Isolated per browser tab\")\n\n    # Wire Event Triggers with Chaining\n    run_btn.click(\n        fn=lambda: \"⏳ Computing analysis...\",\n        inputs=None,\n        outputs=status_banner\n    ).then(\n        fn=calculate_metrics,\n        inputs=[input_text, scale_factor, session_state],\n        outputs=[status_banner, output_log, session_state]\n    )\n\n    clear_btn.click(\n        fn=reset_session,\n        inputs=None,\n        outputs=[input_text, scale_factor, status_banner, output_log, session_state]\n    )\n\nif __name__ == \"__main__\":\n    demo.launch()"
+  },
+  {
+    "dependencies": [
+      "gradio>=4.20.0",
+      "pillow",
+      "numpy"
+    ],
+    "tags": [
+      "gradio",
+      "image_editor",
+      "masking",
+      "canvas",
+      "vision",
+      "drawing"
+    ],
+    "id": "gradio_image_prompter_editor",
+    "title": "Gradio Image Editor with Annotation and Bounding Box Masks",
+    "library": "gradio",
+    "category": "ui",
+    "language": "python",
+    "min_version": "4.20.0",
+    "very_short_desc": "Interactive Gradio ImageEditor component for drawing masks, cropping, and visual prompt annotations.",
+    "short_desc": "A complete Gradio UI implementation for interactive image editing, drawing masks, and extracting composite layers or visual prompts using gr.ImageEditor.",
+    "documentation": "`gr.ImageEditor(type=\"pil\", sources=[\"upload\", \"clipboard\"], transforms=[\"crop\"])`\nOutput dict structure: `{\"background\": PIL.Image, \"layers\": List[PIL.Image], \"composite\": PIL.Image}`.",
+    "long_desc": "This code demonstrates how to implement an interactive image editing and annotation canvas using `gr.ImageEditor` in Gradio 4+.\n\nKey Architectural Highlights:\n1. **Multi-layer Image Ingestion**: `gr.ImageEditor` decomposes the user drawing into a dictionary containing the original base image (`background`), a list of drawing strokes/masks (`layers`), and the flattened combined output (`composite`).\n2. **Layer Inspection**: The handler inspects the alpha channel and mask overlays to extract bounding masks or colored annotations for downstream computer vision models (e.g., inpainting, segmentation, SAM).\n3. **Reactive UI State**: Uses `gr.Blocks` with separate preview panels for the composite result and isolated mask layer.",
+    "code": "import gradio as gr\nfrom PIL import Image, ImageOps\nimport numpy as np\nfrom typing import Dict, Any, Tuple\n\ndef process_editor_output(editor_data: Dict[str, Any]) -> Tuple[Image.Image, Image.Image]:\n    \"\"\"\n    Process image editor layers to extract composite and mask.\n    \n    Args:\n        editor_data: Dict with keys 'background', 'layers', 'composite'\n    \"\"\"\n    if not editor_data or editor_data.get(\"background\") is None:\n        blank = Image.new(\"RGB\", (400, 400), color=\"gray\")\n        return blank, blank\n\n    background = editor_data[\"background\"]\n    composite = editor_data[\"composite\"]\n    layers = editor_data.get(\"layers\", [])\n\n    # Extract mask from drawn layers\n    if layers:\n        # First layer drawing mask\n        mask_layer = layers[0]\n        # Convert layer alpha to grayscale mask\n        if mask_layer.mode == \"RGBA\":\n            mask = mask_layer.split()[-1]\n        else:\n            mask = ImageOps.grayscale(mask_layer)\n    else:\n        mask = Image.new(\"L\", background.size, 0)\n\n    return composite, mask\n\nwith gr.Blocks(title=\"Gradio Visual Prompter & Image Editor\") as demo:\n    gr.Markdown(\"# 🎨 Interactive Image Editor & Masking Canvas\")\n    gr.Markdown(\"Upload an image and draw annotations or masks on the canvas.\")\n\n    with gr.Row():\n        with gr.Column(scale=1):\n            editor = gr.ImageEditor(\n                label=\"Input Image & Drawing Canvas\",\n                type=\"pil\",\n                sources=[\"upload\", \"clipboard\"],\n                transforms=[\"crop\"],\n                brush=gr.Brush(colors=[\"#FF0000\", \"#00FF00\", \"#0000FF\", \"#FFFFFF\"], default_size=15),\n                eraser=gr.Eraser(default_size=15)\n            )\n            submit_btn = gr.Button(\"Extract Annotations & Mask\", variant=\"primary\")\n\n        with gr.Column(scale=1):\n            composite_out = gr.Image(label=\"Composite Result\", type=\"pil\")\n            mask_out = gr.Image(label=\"Isolated Mask Layer\", type=\"pil\", image_mode=\"L\")\n\n    submit_btn.click(\n        fn=process_editor_output,\n        inputs=[editor],\n        outputs=[composite_out, mask_out]\n    )\n\nif __name__ == \"__main__\":\n    demo.launch()"
+  },
+  {
+    "dependencies": [
+      "gradio>=4.20.0",
+      "pillow"
+    ],
+    "tags": [
+      "gradio",
+      "multimodal",
+      "image_text",
+      "chat",
+      "streaming",
+      "vision"
+    ],
+    "id": "gradio_image_text_chat",
+    "title": "Gradio Multimodal ChatInterface with Image and Text",
+    "library": "gradio",
+    "category": "ui",
+    "language": "python",
+    "min_version": "4.20.0",
+    "very_short_desc": "Gradio ChatInterface using gr.MultimodalTextbox for image+text upload and streaming generator responses.",
+    "short_desc": "A complete Gradio UI implementation for uploading and processing images along with text prompts in a streaming chat interface using gr.MultimodalTextbox and gr.ChatInterface.",
+    "documentation": "`gr.ChatInterface(fn, multimodal=True, textbox=gr.MultimodalTextbox(...))`\nThe function receives `message` as a dictionary: `{\"text\": str, \"files\": List[str]}`.\nReturns a generator yielding strings for real-time streaming output.",
+    "long_desc": "This code provides a modern, production-tested implementation of a multimodal chat application using Gradio 4+. \nIt utilizes `gr.ChatInterface` with `multimodal=True` and a `gr.MultimodalTextbox` component. \n\nKey Architectural Highlights:\n1. **Multimodal Payload Structure**: When `multimodal=True` is enabled, the incoming `message` object contains `text` (a string of the user prompt) and `files` (a list of temporary file paths for uploaded images/documents).\n2. **Streaming Response**: The callback function `chat_stream` is structured as a Python generator (`yield`), allowing tokens or chunks to be streamed progressively to the UI without blocking the main event loop.\n3. **Safe Image Loading**: Uploaded images are validated and converted into PIL Image objects safely using context management.\n4. **History Preservation**: Standard Gradio chat history is maintained automatically, allowing multi-turn conversational context.",
+    "code": "import gradio as gr\nfrom PIL import Image\nimport time\nfrom typing import Generator, Dict, Any, List\n\ndef chat_stream(message: Dict[str, Any], history: List[Any]) -> Generator[str, None, None]:\n    \"\"\"\n    Multimodal streaming chat handler.\n    \n    Args:\n        message: Dict containing \"text\" (user message string) and \"files\" (list of image paths)\n        history: Previous conversation turns managed by Gradio\n    \"\"\"\n    user_text = message.get(\"text\", \"\").strip()\n    uploaded_files = message.get(\"files\", [])\n    \n    # 1. Inspect and load attached images\n    loaded_images = []\n    for file_path in uploaded_files:\n        try:\n            img = Image.open(file_path)\n            loaded_images.append(img)\n        except Exception as e:\n            yield f\"Error loading file {file_path}: {e}\"\n            return\n\n    # 2. Build contextual response\n    header = f\"Received prompt: '{user_text}' with {len(loaded_images)} image(s).\\n\\n\"\n    stream_content = (\n        \"Here is the assistant analysis:\\n\"\n        \"- Processing multimodal features...\\n\"\n        \"- Image dimensions: \" + (f\"{loaded_images[0].size}\" if loaded_images else \"No images\") + \"\\n\"\n        \"- Response completed successfully.\"\n    )\n    \n    # 3. Stream token by token\n    current_response = header\n    for chunk in stream_content.split(\" \"):\n        current_response += chunk + \" \"\n        time.sleep(0.05)  # Simulate LLM token streaming delay\n        yield current_response\n\n# Define Multimodal UI\ndemo = gr.ChatInterface(\n    fn=chat_stream,\n    multimodal=True,\n    textbox=gr.MultimodalTextbox(\n        file_types=[\"image\"],\n        placeholder=\"Type a message or drop an image...\",\n        container=False,\n        scale=7\n    ),\n    title=\"Multimodal Image & Text Assistant\",\n    description=\"Upload images alongside your text prompts with streaming feedback.\",\n    fill_height=True\n)\n\nif __name__ == \"__main__\":\n    demo.launch()"
+  },
+  {
+    "dependencies": [
+      "torch>=2.0.0"
+    ],
+    "tags": [
+      "pytorch",
+      "amp",
+      "autocast",
+      "gradscaler",
+      "mixed_precision",
+      "training_loop",
+      "gradient_clipping"
+    ],
+    "id": "pytorch_amp_training_loop",
+    "title": "PyTorch Mixed Precision Training Loop with GradScaler and Gradient Clipping",
+    "library": "pytorch",
+    "category": "training",
+    "language": "python",
+    "min_version": "2.0.0",
+    "very_short_desc": "Production PyTorch AMP training loop with torch.amp.autocast, GradScaler, gradient accumulation, and clipping.",
+    "short_desc": "A complete PyTorch training loop template implementing modern torch.amp.autocast('cuda'), GradScaler, gradient accumulation steps, and torch.nn.utils.clip_grad_norm_.",
+    "documentation": "In PyTorch 2.0+, use `torch.amp.autocast(device_type=\"cuda\", dtype=torch.float16)` or `torch.bfloat16`.\nUse `scaler.scale(loss).backward()`, unscale before clipping with `scaler.unscale_(optimizer)`, then `scaler.step(optimizer)` and `scaler.update()`.",
+    "long_desc": "This snippet demonstrates the standard, rock-solid PyTorch training loop incorporating Automatic Mixed Precision (AMP), gradient accumulation, and gradient clipping.\n\nKey Architectural Highlights:\n1. **Modern AMP Syntax**: Replaces deprecated `torch.cuda.amp.autocast()` with modern `torch.amp.autocast(device_type=\"cuda\", dtype=torch.float16)` compatible with PyTorch 2.x and CPU/CUDA/MPS abstraction.\n2. **Gradient Accumulation**: Updates model weights every `gradient_accumulation_steps` batches while correctly normalizing the loss tensor.\n3. **Safe Gradient Unscaling & Clipping**: Explicitly calls `scaler.unscale_(optimizer)` before invoking `torch.nn.utils.clip_grad_norm_` to avoid distorted gradient norms caused by scaled floating-point values.\n4. **Learning Rate Scheduler Sync**: Steps the LR scheduler only after the optimizer step completes and the scaler is updated.",
+    "code": "import torch\nimport torch.nn as nn\nfrom torch.utils.data import DataLoader, TensorDataset\n\ndef train_epoch(\n    model: nn.Module,\n    dataloader: DataLoader,\n    optimizer: torch.optim.Optimizer,\n    criterion: nn.Module,\n    device: torch.device,\n    scaler: torch.amp.GradScaler,\n    scheduler: torch.optim.lr_scheduler._LRScheduler | None = None,\n    gradient_accumulation_steps: int = 4,\n    max_grad_norm: float = 1.0\n) -> float:\n    \"\"\"\n    Executes one full training epoch using AMP, gradient accumulation, and clipping.\n    \"\"\"\n    model.train()\n    total_loss = 0.0\n    optimizer.zero_grad(set_to_none=True)\n\n    for step, (inputs, targets) in enumerate(dataloader):\n        inputs = inputs.to(device, non_blocking=True)\n        targets = targets.to(device, non_blocking=True)\n\n        # 1. Forward pass under mixed precision autocast\n        with torch.amp.autocast(device_type=device.type, dtype=torch.float16):\n            outputs = model(inputs)\n            loss = criterion(outputs, targets)\n            # Scale loss for gradient accumulation\n            loss = loss / gradient_accumulation_steps\n\n        # 2. Scaled backward pass\n        scaler.scale(loss).backward()\n        total_loss += loss.item() * gradient_accumulation_steps\n\n        # 3. Optimizer step at accumulation boundary\n        if (step + 1) % gradient_accumulation_steps == 0 or (step + 1) == len(dataloader):\n            # Unscale gradients prior to clipping\n            scaler.unscale_(optimizer)\n            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)\n\n            # Step optimizer & update scaler\n            scaler.step(optimizer)\n            scaler.update()\n            optimizer.zero_grad(set_to_none=True)\n\n            if scheduler is not None:\n                scheduler.step()\n\n    avg_loss = total_loss / len(dataloader)\n    return avg_loss\n\n# Example Setup & Smoke Test\nif __name__ == \"__main__\":\n    device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n    model = nn.Sequential(nn.Linear(64, 128), nn.ReLU(), nn.Linear(128, 10)).to(device)\n    \n    dataset = TensorDataset(torch.randn(100, 64), torch.randint(0, 10, (100,)))\n    loader = DataLoader(dataset, batch_size=16, shuffle=True)\n    \n    opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-2)\n    crit = nn.CrossEntropyLoss()\n    grad_scaler = torch.amp.GradScaler(device.type, enabled=(device.type == \"cuda\"))\n\n    loss = train_epoch(model, loader, opt, crit, device, grad_scaler, gradient_accumulation_steps=2)\n    print(f\"Training completed. Epoch Loss: {loss:.4f}\")"
+  },
+  {
+    "dependencies": [
+      "torch>=2.0.0"
+    ],
+    "tags": [
+      "pytorch",
+      "checkpoint",
+      "state_dict",
+      "resume_training",
+      "rng_state",
+      "model_io"
+    ],
+    "id": "pytorch_checkpoint_save_resume",
+    "title": "Safe PyTorch Atomic Checkpoint Saving, Loading, and State Resumption",
+    "library": "pytorch",
+    "category": "training",
+    "language": "python",
+    "min_version": "2.0.0",
+    "very_short_desc": "Production PyTorch checkpoint utility saving model, optimizer, scheduler, scaler, and full RNG states.",
+    "short_desc": "A complete PyTorch checkpointing module providing atomic temporary file saving, state resumption for model/optimizer/scheduler/GradScaler, and full deterministic RNG state preservation.",
+    "documentation": "Always write to a temporary file (`.tmp`) and atomically rename (`os.replace`) to prevent corrupted checkpoints if interrupted.\nUnwrap DDP/compiled models before extracting `state_dict`: `getattr(model, \"module\", model).state_dict()`.",
+    "long_desc": "This code provides a production-grade utility for saving and resuming PyTorch training checkpoints safely without risking data corruption during sudden job interruptions or node preemptions.\n\nKey Architectural Highlights:\n1. **Atomic File Write**: Saves to a `.pt.tmp` file and performs an atomic rename using `os.replace` to ensure interrupted saves never corrupt the existing checkpoint file.\n2. **Comprehensive State Preservation**: Stores model `state_dict`, optimizer `state_dict`, learning rate scheduler, GradScaler, current epoch/global step, and best validation metric.\n3. **RNG State Serialization**: Captures `torch.get_rng_state()`, `torch.cuda.get_rng_state_all()`, and python/numpy random states to guarantee identical data ordering upon resumption.\n4. **Compiled & DDP Unwrapping**: Automatically unwraps `_orig_mod` (from `torch.compile`) or `.module` (from `DDP`) to store standard state dicts compatible with non-distributed evaluation.",
+    "code": ""
+  },
+  {
+    "dependencies": [
+      "torch>=2.0.0"
+    ],
+    "tags": [
+      "pytorch",
+      "dataset",
+      "dataloader",
+      "collate_fn",
+      "multiprocessing",
+      "pin_memory",
+      "data_pipeline"
+    ],
+    "id": "pytorch_custom_dataset_dataloader",
+    "title": "Production PyTorch Custom Dataset with Custom Collate and Fast DataLoader",
+    "library": "pytorch",
+    "category": "data",
+    "language": "python",
+    "min_version": "2.0.0",
+    "very_short_desc": "Production PyTorch Dataset template with custom collate_fn, dynamic padding, and optimized multiprocessing DataLoader.",
+    "short_desc": "A complete PyTorch data pipeline boilerplate featuring an indexable custom Dataset, custom collate_fn with dynamic sequence padding, and high-throughput DataLoader configuration.",
+    "documentation": "Always set `pin_memory=True` when training on GPU.\nSet `num_workers > 0` with `persistent_workers=True` to eliminate worker respawn latency.\nCustom `collate_fn` handles variable length batches (padding, masking).",
+    "long_desc": "This code template illustrates a robust and high-throughput PyTorch `Dataset` and `DataLoader` architecture capable of handling variable-length sequential or tabular data.\n\nKey Architectural Highlights:\n1. **Dynamic Padding in `collate_fn`**: Instead of padding the entire dataset to the maximum global sequence length, the custom `collate_fn` dynamically pads only to the maximum length within each batch, significantly reducing compute and memory overhead.\n2. **Worker Initialization & Multi-threading**: Configures `num_workers`, `pin_memory=True`, and `persistent_workers=True` for high I/O throughput to GPU without CPU bottlenecks.\n3. **Reproducibility**: Includes a deterministic `worker_init_fn` to seed worker processes independently based on torch's initial seed.",
+    "code": "import random\nimport numpy as np\nimport torch\nfrom torch.utils.data import Dataset, DataLoader\nfrom typing import List, Dict, Tuple, Any\n\nclass CustomSequenceDataset(Dataset):\n    \"\"\"\n    Custom PyTorch Dataset with sample indexing and metadata.\n    \"\"\"\n    def __init__(self, data_records: List[Dict[str, Any]]):\n        self.data = data_records\n\n    def __len__(self) -> int:\n        return len(self.data)\n\n    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:\n        record = self.data[idx]\n        tokens = torch.tensor(record[\"tokens\"], dtype=torch.long)\n        label = torch.tensor(record[\"label\"], dtype=torch.long)\n        return tokens, label\n\ndef custom_collate_fn(batch: List[Tuple[torch.Tensor, torch.Tensor]], pad_token_id: int = 0) -> Dict[str, torch.Tensor]:\n    \"\"\"\n    Dynamically pad sequences to the maximum length in the current batch.\n    \"\"\"\n    tokens_list, labels_list = zip(*batch)\n    lengths = [len(seq) for seq in tokens_list]\n    max_len = max(lengths)\n\n    # Pad sequences\n    padded_tokens = torch.full((len(batch), max_len), fill_value=pad_token_id, dtype=torch.long)\n    attention_mask = torch.zeros((len(batch), max_len), dtype=torch.float32)\n\n    for i, seq in enumerate(tokens_list):\n        seq_len = len(seq)\n        padded_tokens[i, :seq_len] = seq\n        attention_mask[i, :seq_len] = 1.0\n\n    labels = torch.stack(labels_list)\n\n    return {\n        \"input_ids\": padded_tokens,\n        \"attention_mask\": attention_mask,\n        \"labels\": labels\n    }\n\ndef seed_worker(worker_id: int):\n    \"\"\"Ensure independent deterministic RNG seeding for each DataLoader worker.\"\"\"\n    worker_seed = torch.initial_seed() % 2**32\n    np.random.seed(worker_seed)\n    random.seed(worker_seed)\n\ndef create_dataloader(\n    dataset: Dataset,\n    batch_size: int = 32,\n    shuffle: bool = True,\n    num_workers: int = 2\n) -> DataLoader:\n    \"\"\"Factory function for optimized DataLoader.\"\"\"\n    use_cuda = torch.cuda.is_available()\n    return DataLoader(\n        dataset,\n        batch_size=batch_size,\n        shuffle=shuffle,\n        num_workers=num_workers,\n        collate_fn=custom_collate_fn,\n        pin_memory=use_cuda,\n        persistent_workers=(num_workers > 0),\n        worker_init_fn=seed_worker\n    )\n\n# Smoke test\nif __name__ == \"__main__\":\n    dummy_data = [{\"tokens\": [1, 2, random.randint(3, 10)], \"label\": 1} for _ in range(50)]\n    dataset = CustomSequenceDataset(dummy_data)\n    loader = create_dataloader(dataset, batch_size=4, num_workers=0)\n    batch = next(iter(loader))\n    print(f\"Batch shape: {batch['input_ids'].shape}, Attention mask shape: {batch['attention_mask'].shape}\")"
+  },
+  {
+    "dependencies": [
+      "torch>=2.0.0"
+    ],
+    "tags": [
+      "pytorch",
+      "ddp",
+      "distributed",
+      "multi_gpu",
+      "nccl",
+      "distributed_sampler"
+    ],
+    "id": "pytorch_ddp_multi_gpu",
+    "title": "PyTorch DistributedDataParallel (DDP) Multi-GPU Training Setup",
+    "library": "pytorch",
+    "category": "distributed",
+    "language": "python",
+    "min_version": "2.0.0",
+    "very_short_desc": "Production PyTorch DDP setup with torch.distributed, DistributedSampler, and cleanup handling.",
+    "short_desc": "A complete PyTorch DistributedDataParallel (DDP) template for multi-GPU training featuring init_process_group, DistributedSampler epoch seeding, and graceful destroy_process_group cleanup.",
+    "documentation": "Launch with `torchrun --nproc_per_node=NUM_GPUS script.py`.\nAlways call `sampler.set_epoch(epoch)` before iterating over DataLoader in each epoch.\nWrap model with `torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])`.",
+    "long_desc": "This code provides a boilerplate for modern multi-GPU distributed training using `torchrun` and `torch.nn.parallel.DistributedDataParallel` (DDP).\n\nKey Architectural Highlights:\n1. **Process Group Lifecycle**: Initializes NCCL backend using environment variables (`LOCAL_RANK`, `RANK`, `WORLD_SIZE`) provided automatically by `torchrun`, and ensures clean exit via `dist.destroy_process_group()`.\n2. **DistributedSampler Integration**: Ensures non-overlapping batch splits across workers. Calls `sampler.set_epoch(epoch)` to ensure distinct shuffling per epoch.\n3. **Rank-0 Only Logging**: Restricts checkpointing, print statements, and metric uploads to `rank == 0` to prevent filesystem conflicts and duplicated logs.",
+    "code": "import os\nimport torch\nimport torch.nn as nn\nimport torch.distributed as dist\nfrom torch.nn.parallel import DistributedDataParallel as DDP\nfrom torch.utils.data import DataLoader, Dataset, DistributedSampler\n\ndef setup_distributed():\n    \"\"\"Initializes distributed environment variables from torchrun.\"\"\"\n    dist.init_process_group(backend=\"nccl\" if torch.cuda.is_available() else \"gloo\")\n    local_rank = int(os.environ.get(\"LOCAL_RANK\", 0))\n    if torch.cuda.is_available():\n        torch.cuda.set_device(local_rank)\n    return local_rank\n\ndef cleanup_distributed():\n    \"\"\"Tears down process group cleanly.\"\"\"\n    if dist.is_initialized():\n        dist.destroy_process_group()\n\ndef train_ddp(model_cls: type, dataset: Dataset, epochs: int = 3):\n    local_rank = setup_distributed()\n    global_rank = dist.get_rank()\n    world_size = dist.get_world_size()\n\n    # 1. Setup model on isolated device\n    device = torch.device(f\"cuda:{local_rank}\" if torch.cuda.is_available() else \"cpu\")\n    model = model_cls().to(device)\n    \n    if torch.cuda.is_available():\n        ddp_model = DDP(model, device_ids=[local_rank], output_device=local_rank)\n    else:\n        ddp_model = DDP(model)\n\n    # 2. Setup DistributedSampler\n    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=global_rank, shuffle=True)\n    loader = DataLoader(dataset, batch_size=32, sampler=sampler, pin_memory=torch.cuda.is_available())\n    \n    optimizer = torch.optim.AdamW(ddp_model.parameters(), lr=1e-3)\n    criterion = nn.MSELoss()\n\n    for epoch in range(epochs):\n        sampler.set_epoch(epoch)  # Crucial for deterministic epoch shuffling\n        ddp_model.train()\n        \n        for batch_idx, (x, y) in enumerate(loader):\n            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)\n            optimizer.zero_grad(set_to_none=True)\n            out = ddp_model(x)\n            loss = criterion(out, y)\n            loss.backward()\n            optimizer.step()\n\n        if global_rank == 0:\n            print(f\"Epoch {epoch+1}/{epochs} completed across {world_size} rank(s).\")\n\n    cleanup_distributed()\n\nif __name__ == \"__main__\":\n    # Note: run via `torchrun --nproc_per_node=2 script.py`\n    print(\"DDP boilerplate ready for execution with torchrun.\")"
+  }
+]
