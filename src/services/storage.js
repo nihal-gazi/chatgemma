@@ -1,8 +1,58 @@
 /**
- * Storage Service for userdat.synapse import/export and LocalStorage caching.
+ * Storage Service for ChatGemma (IndexedDB + userdat.synapse import/export + LocalStorage caching).
+ * Provides robust asynchronous IndexedDB persistence with unlimited quota for multi-turn chats,
+ * rich reasoning blocks, thoughts, and file attachments without hitting LocalStorage 5MB ceilings.
  */
 
 import { CONFIG } from "../config/config.js";
+
+const DB_NAME = "ChatGemmaDB";
+const DB_VERSION = 1;
+const STORE_NAME = "chat_state";
+const STATE_KEY = "current_app_state";
+
+let dbPromise = null;
+
+function getIndexedDB() {
+  if (typeof window === "undefined") return null;
+  return window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB || null;
+}
+
+function openDatabase() {
+  if (dbPromise) return dbPromise;
+
+  const idb = getIndexedDB();
+  if (!idb) {
+    return Promise.resolve(null);
+  }
+
+  dbPromise = new Promise((resolve) => {
+    try {
+      const request = idb.open(DB_NAME, DB_VERSION);
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
+      };
+
+      request.onsuccess = (event) => {
+        resolve(event.target.result);
+      };
+
+      request.onerror = (event) => {
+        console.warn("[Storage] IndexedDB open error, falling back to LocalStorage:", event.target.error);
+        resolve(null);
+      };
+    } catch (err) {
+      console.warn("[Storage] IndexedDB exception:", err);
+      resolve(null);
+    }
+  });
+
+  return dbPromise;
+}
 
 export class SynapseStorageService {
   /**
@@ -26,13 +76,13 @@ export class SynapseStorageService {
         email: userProfile?.email || "",
       },
       settings: {
-        apiKey: settings.apiKey || CONFIG.defaultApiKey,
-        modelId: settings.modelId || CONFIG.defaultModelId,
-        systemPrompt: settings.systemPrompt || CONFIG.defaultSystemPrompt,
-        cloudSyncEnabled: Boolean(settings.cloudSyncEnabled),
-        allowKnowledgeGraphReadWrite: settings.allowKnowledgeGraphReadWrite !== false,
-        enablePersonalization: settings.enablePersonalization !== false,
-        personalizationMaxTokens: settings.personalizationMaxTokens || 5000,
+        apiKey: settings?.apiKey || CONFIG.defaultApiKey,
+        modelId: settings?.modelId || CONFIG.defaultModelId,
+        systemPrompt: settings?.systemPrompt || CONFIG.defaultSystemPrompt,
+        cloudSyncEnabled: Boolean(settings?.cloudSyncEnabled),
+        allowKnowledgeGraphReadWrite: settings?.allowKnowledgeGraphReadWrite !== false,
+        enablePersonalization: settings?.enablePersonalization !== false,
+        personalizationMaxTokens: settings?.personalizationMaxTokens || 5000,
       },
       activeSessionId: activeSessionId,
       sessions: sessions || [],
@@ -40,6 +90,76 @@ export class SynapseStorageService {
       userKnowledgeGraph: userKnowledgeGraph || null,
       userProfileMarkdown: userProfileMarkdown || null,
     };
+  }
+
+  /**
+   * Save app state asynchronously to IndexedDB (and LocalStorage as backup).
+   * @param {Object} appState
+   */
+  static async saveState(appState) {
+    if (!appState) return;
+
+    // 1. Primary: Save to IndexedDB (Unlimited quota, non-blocking)
+    try {
+      const db = await openDatabase();
+      if (db) {
+        await new Promise((resolve, reject) => {
+          const transaction = db.transaction([STORE_NAME], "readwrite");
+          const store = transaction.objectStore(STORE_NAME);
+          const putReq = store.put(appState, STATE_KEY);
+
+          putReq.onsuccess = () => resolve(true);
+          putReq.onerror = (e) => reject(e.target.error);
+          transaction.onerror = (e) => reject(e.target.error);
+        });
+      }
+    } catch (idbErr) {
+      console.warn("[Storage] IndexedDB save error:", idbErr);
+    }
+
+    // 2. Secondary: Fallback to LocalStorage (safely wrapped)
+    try {
+      this.saveLocalBackup(appState);
+    } catch (lsErr) {
+      // Ignored if localstorage is full
+    }
+  }
+
+  /**
+   * Load app state asynchronously from IndexedDB (with LocalStorage migration).
+   * @returns {Promise<Object|null>}
+   */
+  static async loadState() {
+    // 1. Try IndexedDB first
+    try {
+      const db = await openDatabase();
+      if (db) {
+        const idbData = await new Promise((resolve) => {
+          const transaction = db.transaction([STORE_NAME], "readonly");
+          const store = transaction.objectStore(STORE_NAME);
+          const getReq = store.get(STATE_KEY);
+
+          getReq.onsuccess = () => resolve(getReq.result || null);
+          getReq.onerror = () => resolve(null);
+        });
+
+        if (idbData && Array.isArray(idbData.sessions) && idbData.sessions.length > 0) {
+          return idbData;
+        }
+      }
+    } catch (err) {
+      console.warn("[Storage] IndexedDB load error, falling back:", err);
+    }
+
+    // 2. Fallback to LocalStorage & migrate to IndexedDB if found
+    const lsBackup = this.loadLocalBackup();
+    if (lsBackup && Array.isArray(lsBackup.sessions) && lsBackup.sessions.length > 0) {
+      // Migrate to IndexedDB in background
+      this.saveState(lsBackup).catch(() => {});
+      return lsBackup;
+    }
+
+    return null;
   }
 
   /**
@@ -118,18 +238,40 @@ export class SynapseStorageService {
   }
 
   /**
-   * LocalStorage browser persistence so the browser remembers all chats across reloads.
+   * Synchronous LocalStorage backup (with safe quota truncation).
    */
   static saveLocalBackup(appState) {
     try {
+      if (typeof window === "undefined" || !window.localStorage) return;
       localStorage.setItem(CONFIG.localStorageKey, JSON.stringify(appState));
     } catch (e) {
-      console.warn("LocalStorage save error:", e);
+      // If quota exceeded in localStorage, try storing a lightweight index
+      try {
+        if (appState && Array.isArray(appState.sessions)) {
+          const lightweightState = {
+            ...appState,
+            sessions: appState.sessions.map((s) => ({
+              ...s,
+              messages: (s.messages || []).map((m) => ({
+                id: m.id,
+                role: m.role,
+                content: m.content,
+                timestamp: m.timestamp,
+                // Omit heavy file blobs / reasoning blocks from synchronous localStorage
+              })),
+            })),
+          };
+          localStorage.setItem(CONFIG.localStorageKey, JSON.stringify(lightweightState));
+        }
+      } catch (innerErr) {
+        // Safe silence: IndexedDB is the primary source of truth
+      }
     }
   }
 
   static loadLocalBackup() {
     try {
+      if (typeof window === "undefined" || !window.localStorage) return null;
       const raw = localStorage.getItem(CONFIG.localStorageKey);
       if (raw) return JSON.parse(raw);
     } catch (e) {

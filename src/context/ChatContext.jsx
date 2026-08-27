@@ -53,6 +53,8 @@ export function ChatProvider({ children }) {
     };
   });
 
+  const isInitializedRef = useRef(false);
+
   const [generatingSessionId, setGeneratingSessionId] = useState(null);
   const isGenerating = Boolean(generatingSessionId);
   const [currentStreamingThought, setCurrentStreamingThought] = useState("");
@@ -64,6 +66,24 @@ export function ChatProvider({ children }) {
   const apiServiceRef = useRef(
     new GemmaApiService(settings.apiKey, settings.modelId, settings.systemPrompt)
   );
+
+  // 1. Asynchronous IndexedDB Hydration on Mount
+  useEffect(() => {
+    SynapseStorageService.loadState().then((storedState) => {
+      if (storedState) {
+        if (Array.isArray(storedState.sessions) && storedState.sessions.length > 0) {
+          setSessions(storedState.sessions);
+          if (storedState.activeSessionId) {
+            setActiveSessionId(storedState.activeSessionId);
+          }
+        }
+        if (storedState.settings) {
+          setSettings((prev) => ({ ...prev, ...storedState.settings }));
+        }
+      }
+      isInitializedRef.current = true;
+    });
+  }, []);
 
   // Update API service when settings change
   useEffect(() => {
@@ -83,15 +103,17 @@ export function ChatProvider({ children }) {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Local storage auto-backup & Cloud Sync on changes
+  // 2. Continuous Persistence to IndexedDB & LocalStorage on changes
   useEffect(() => {
+    if (!isInitializedRef.current) return;
+
     const state = SynapseStorageService.packageState(
       sessions,
       activeSessionId,
       settings,
       { displayName, email: user?.email }
     );
-    SynapseStorageService.saveLocalBackup(state);
+    SynapseStorageService.saveState(state);
 
     // If cloud sync is enabled and user is logged in
     if (settings.cloudSyncEnabled && user?.uid) {
@@ -99,12 +121,50 @@ export function ChatProvider({ children }) {
     }
   }, [sessions, activeSessionId, settings, user, displayName]);
 
-  // Load from Cloud if user logs in and cloud sync is enabled
+  // 3. Smart Cloud Sync Merging when User logs in
   useEffect(() => {
     if (user?.uid && settings.cloudSyncEnabled) {
       CloudSyncService.loadUserData(user.uid).then((cloudData) => {
-        if (cloudData && cloudData.sessions && cloudData.sessions.length > 0) {
-          setSessions(cloudData.sessions);
+        if (cloudData && Array.isArray(cloudData.sessions) && cloudData.sessions.length > 0) {
+          setSessions((localSessions) => {
+            const sessionMap = new Map();
+
+            // Add all local sessions
+            for (const localSess of localSessions) {
+              if (localSess && localSess.id) {
+                sessionMap.set(localSess.id, localSess);
+              }
+            }
+
+            // Merge cloud sessions by latest timestamp or message count
+            for (const cloudSess of cloudData.sessions) {
+              if (!cloudSess || !cloudSess.id) continue;
+              if (!sessionMap.has(cloudSess.id)) {
+                sessionMap.set(cloudSess.id, cloudSess);
+              } else {
+                const localSess = sessionMap.get(cloudSess.id);
+                const localUpdated = new Date(localSess.updated_at || 0).getTime();
+                const cloudUpdated = new Date(cloudSess.updated_at || 0).getTime();
+                if (
+                  (cloudSess.messages?.length || 0) > (localSess.messages?.length || 0) ||
+                  cloudUpdated > localUpdated
+                ) {
+                  sessionMap.set(cloudSess.id, cloudSess);
+                }
+              }
+            }
+
+            const merged = Array.from(sessionMap.values());
+            const mergedState = SynapseStorageService.packageState(
+              merged,
+              activeSessionId || cloudData.activeSessionId,
+              settings,
+              { displayName, email: user?.email }
+            );
+            SynapseStorageService.saveState(mergedState);
+            return merged;
+          });
+
           if (cloudData.activeSessionId) {
             setActiveSessionId(cloudData.activeSessionId);
           }
