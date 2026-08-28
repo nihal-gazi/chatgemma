@@ -1,94 +1,36 @@
-/**
- * Knowledge Search Tool for ChatGemma (Google Knowledge Graph & GraphRAG Principles)
- * Enables Gemma to search its interconnected Knowledge Graph for entities, facts,
- * semantic relationships, and multi-hop reasoning paths.
- */
-
-import { knowledgeGraphInstance } from "../../services/knowledgeGraph.js";
+import { executeKgSearch } from "./kg_helpers.js";
 
 export const knowledgeSearchTool = {
   name: "knowledge_search",
-  displayName: "Knowledge Graph Search",
+  displayName: "General Knowledge Search",
   iconName: "Share2",
   description:
-    "Searches the interconnected Knowledge Graph for entities, facts, relationships, and multi-hop reasoning paths across learned concepts, people, projects, technologies, and memories.",
+    "Searches the General Knowledge Graph for concepts, technologies, architectures, world facts, and directed relationships. Supports multi-hop GraphRAG traversal.",
   parameters: {
     type: "OBJECT",
     properties: {
       query: {
         type: "STRING",
-        description: "The entity, concept, project, or relationship query to look up in the Knowledge Graph.",
+        description: "Keywords, concept name, technology, or topic to search.",
       },
-      types: {
+      entityTypes: {
         type: "ARRAY",
         items: { type: "STRING" },
-        description:
-          "Optional filter by Schema.org entity types (e.g. ['Person', 'Organization', 'Project', 'Technology', 'Concept', 'Location', 'Preference']).",
+        description: "Optional types filter e.g. ['Technology', 'Concept', 'Organization'].",
       },
-      relations: {
-        type: "ARRAY",
-        items: { type: "STRING" },
-        description:
-          "Optional filter by predicate relations (e.g. ['CREATED', 'WORKS_ON', 'USES', 'PREFERS', 'LOCATED_IN', 'PART_OF', 'ASSOCIATED_WITH']).",
-      },
-      depth: {
+      maxDepth: {
         type: "INTEGER",
-        description: "Graph traversal depth for multi-hop connected facts (1 to 3, default: 1).",
+        description: "Graph traversal depth (default: 2, max: 4).",
       },
       limit: {
         type: "INTEGER",
-        description: "Maximum number of entities/triples to return (default: 10).",
+        description: "Maximum entities to return (default: 10).",
       },
     },
     required: ["query"],
   },
-  renderSummary: (args) => `KG: "${args.query || ""}"${args.depth > 1 ? ` (depth: ${args.depth})` : ""}`,
-
+  renderSummary: (args) => `Search: "${args.query || ""}"`,
   async execute(args, context = {}) {
-    // Check permission from settings
-    if (context?.settings?.allowKnowledgeGraphReadWrite === false) {
-      return {
-        query: args.query || "",
-        found: false,
-        error: "Permission denied: LLM Knowledge Graph read/write access is disabled in Settings. Please ask the user to enable it in Settings to allow the model to interact with the graph.",
-      };
-    }
-
-    const query = (args.query || "").trim();
-    const types = args.types || [];
-    const relations = args.relations || [];
-    const depth = args.depth || 1;
-    const limit = args.limit || 10;
-
-    const kgService = context.knowledgeGraph || knowledgeGraphInstance;
-
-    const searchResults = kgService.search(query, {
-      types,
-      relations,
-      depth,
-      limit,
-    });
-
-    return {
-      query,
-      found: searchResults.totalEntitiesFound > 0 || searchResults.totalTriplesFound > 0,
-      totalEntities: searchResults.totalEntitiesFound,
-      totalTriples: searchResults.totalTriplesFound,
-      matchedEntities: searchResults.matchedEntities.map((e) => ({
-        name: e.name,
-        types: e.types,
-        description: e.description,
-        attributes: e.attributes,
-      })),
-      facts: searchResults.directTriples.map((t) => ({
-        subject: t.sourceName,
-        predicate: t.predicate,
-        object: t.targetName,
-        description: t.description,
-        confidence: t.confidence,
-      })),
-      paths: searchResults.connectedPaths,
-      summary: searchResults.subgraphSummary,
-    };
+    return executeKgSearch(args, context, false);
   },
 };

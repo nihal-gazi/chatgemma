@@ -1,49 +1,18 @@
 /**
  * Knowledge-Graph-Driven Brainstorming Tool for ChatGemma
  * Implements:
- * 1. Predicate Swapping (Edge Mutation)
- * 2. Isomorphic Mapping (Cross-Domain Analogy)
- * 3. Semantic similarity and Graph Density Guardrails ("not_enough_knowledge")
+ * 1. Predicate Swapping (Continuous Path Walk with Edge Mutation)
+ * 2. Random Disconnected Pair Synthesis (Novel conceptual bridges)
  */
 
 import { knowledgeGraphInstance, userKnowledgeGraphInstance } from "../../services/knowledgeGraph.js";
+import { ALL_CANDIDATE_PREDICATES } from "../../data/predicates.js";
+import { createLCG } from "../../utils/prng.js";
 import {
   getMutatedPredicate,
   computeSemanticSimilarity,
   extractSalientKeywords,
-  PREDICATE_INVERSIONS,
-  PREDICATE_FUNCTIONAL_CATEGORIES,
-  ORTHOGONAL_PREDICATES,
 } from "../../utils/similarity.js";
-
-const ALL_CANDIDATE_PREDICATES = Array.from(
-  new Set([
-    ...Object.keys(PREDICATE_INVERSIONS),
-    ...Object.values(PREDICATE_INVERSIONS),
-    ...Object.values(PREDICATE_FUNCTIONAL_CATEGORIES).flat(),
-    ...ORTHOGONAL_PREDICATES,
-    "CATALYZES",
-    "INHIBITS",
-    "TRANSMUTES",
-    "NEUTRALIZES",
-    "QUANTIZES",
-    "AMPLIFIES",
-    "DISRUPTS",
-    "HARMONIZES",
-    "DECOUPLES",
-    "STABILIZES",
-    "ACCELERATES",
-    "DECELERATES",
-    "COMPRESSES",
-    "EXPANDS",
-    "ENCRYPTS",
-    "DECRYPTS",
-    "TEACHES",
-    "EMPOWERS",
-    "MODULATES",
-    "CONVERGES_WITH",
-  ])
-);
 
 export const brainstormIdeaTool = {
   name: "brainstorm_idea",
@@ -64,7 +33,7 @@ export const brainstormIdeaTool = {
         type: "ARRAY",
         items: { type: "STRING" },
         description:
-          "Array of target concepts, keywords, or domain terms to anchor the brainstorm around (e.g. ['attention mechanism', 'loss landscape'], ['quantum tunneling', 'flash memory']). Optional in 'random_pair' mode.",
+          "Array of target concepts, keywords, or domain terms to anchor the brainstorm around (e.g. ['attention mechanism', 'loss landscape']). Optional in 'random_pair' mode.",
       },
       k_pairs: {
         type: "INTEGER",
@@ -108,6 +77,7 @@ export const brainstormIdeaTool = {
       args.seed !== undefined
         ? Number(args.seed) || 0
         : Math.floor(Math.random() * 100000);
+    const rng = createLCG(seed);
 
     const kgService = context.knowledgeGraph || knowledgeGraphInstance;
     const userKG = context.userKnowledgeGraph || userKnowledgeGraphInstance;
@@ -118,13 +88,9 @@ export const brainstormIdeaTool = {
     if (mode === "random_pair") {
       const kPairs = Math.max(
         1,
-        Math.min(
-          Number(args.k_pairs || args.max_graph_length || args.count) || 5,
-          20
-        )
+        Math.min(Number(args.k_pairs || args.max_graph_length || args.count) || 5, 20)
       );
 
-      // Collect all active entities from General and User KG
       const allActiveEntities = [
         ...Array.from(kgService.entities.values()),
         ...Array.from(userKG?.entities?.values() || []),
@@ -159,7 +125,6 @@ export const brainstormIdeaTool = {
         }
       }
 
-      // Optional keyword extraction if provided
       let rawKeywords = [];
       if (Array.isArray(args.keywords)) {
         rawKeywords = args.keywords.map((k) => String(k).trim()).filter(Boolean);
@@ -178,26 +143,27 @@ export const brainstormIdeaTool = {
         for (const kw of rawKeywords) {
           const kwLower = kw.toLowerCase();
           let bestMatch = null;
-          let bestScore = 0;
+          let bestSim = 0;
 
-          for (const entity of allActiveEntities) {
-            const nameLower = (entity.name || "").toLowerCase();
-            let score = 0;
-            if (nameLower === kwLower) score = 1.0;
-            else if (entity.aliases?.some((a) => a.toLowerCase() === kwLower)) score = 0.95;
-            else score = computeSemanticSimilarity(kwLower, nameLower);
-
-            if (score > bestScore) {
-              bestScore = score;
-              bestMatch = entity;
+          for (const ent of allActiveEntities) {
+            const nameLower = (ent.name || "").toLowerCase();
+            if (nameLower === kwLower) {
+              bestMatch = ent;
+              bestSim = 1.0;
+              break;
+            }
+            const sim = computeSemanticSimilarity(kwLower, nameLower);
+            if (sim > bestSim && sim >= 0.5) {
+              bestSim = sim;
+              bestMatch = ent;
             }
           }
 
-          if (bestMatch && bestScore >= 0.5) {
+          if (bestMatch) {
             foundKeywords.push({
               keyword: kw,
               matchedNode: bestMatch.name,
-              score: Number(bestScore.toFixed(3)),
+              nodeId: bestMatch.id,
               domain: bestMatch.domain || bestMatch.attributes?.domain || "General",
             });
             biasedEntities.push(bestMatch);
@@ -207,85 +173,58 @@ export const brainstormIdeaTool = {
         }
       }
 
-      // Seeded Pseudorandom Number Generator
-      let currentSeed = Math.abs(seed) + 7;
-      const seededRandom = () => {
-        currentSeed = (currentSeed * 9301 + 49297) % 233280;
-        return currentSeed / 233280;
-      };
-
       const selectedPairs = [];
       const selectedPairKeys = new Set();
+      const entityPool =
+        biasedEntities.length >= 2 && biasedEntities.length >= kPairs
+          ? biasedEntities
+          : allActiveEntities;
+
       let attempts = 0;
-      const maxAttempts = 600;
+      const maxAttempts = 300;
 
       while (selectedPairs.length < kPairs && attempts < maxAttempts) {
         attempts++;
 
-        // Pick Node A: preferentially pick from biased entities if available, else random
-        let entityA;
-        if (
-          biasedEntities.length > 0 &&
-          selectedPairs.length < biasedEntities.length
-        ) {
-          entityA = biasedEntities[selectedPairs.length];
-        } else {
-          const idxA = Math.floor(seededRandom() * allActiveEntities.length);
-          entityA = allActiveEntities[idxA];
+        const idxA = Math.floor(rng() * entityPool.length);
+        let idxB = Math.floor(rng() * allActiveEntities.length);
+
+        const entityA = entityPool[idxA];
+        let entityB = allActiveEntities[idxB];
+
+        if (entityA.id === entityB.id || entityA.name.toLowerCase() === entityB.name.toLowerCase()) {
+          continue;
         }
 
-        // Pick Node B from all active entities
-        const idxB = Math.floor(seededRandom() * allActiveEntities.length);
-        const entityB = allActiveEntities[idxB];
-
-        if (!entityA || !entityB) continue;
-        if (entityA.id === entityB.id) continue;
-        if (entityA.name.toLowerCase() === entityB.name.toLowerCase()) continue;
-
-        const pairKey1 = `${entityA.name.toLowerCase()}|||${entityB.name.toLowerCase()}`;
-        const pairKey2 = `${entityB.name.toLowerCase()}|||${entityA.name.toLowerCase()}`;
+        const pairKey1 = `${entityA.id}::${entityB.id}`;
+        const pairKey2 = `${entityB.id}::${entityA.id}`;
         if (selectedPairKeys.has(pairKey1) || selectedPairKeys.has(pairKey2)) {
           continue;
         }
 
-        // VERIFY NO EXISTING CONNECTION IN THE GRAPH
+        // Verify NO existing connection in the graph
         const isConnected =
           connectedPairs.has(`${entityA.id}->${entityB.id}`) ||
           connectedPairs.has(`${entityB.id}->${entityA.id}`) ||
-          connectedPairs.has(
-            `${entityA.name.toLowerCase()}->${entityB.name.toLowerCase()}`
-          ) ||
-          connectedPairs.has(
-            `${entityB.name.toLowerCase()}->${entityA.name.toLowerCase()}`
-          );
+          connectedPairs.has(`${entityA.name.toLowerCase()}->${entityB.name.toLowerCase()}`) ||
+          connectedPairs.has(`${entityB.name.toLowerCase()}->${entityA.name.toLowerCase()}`);
 
-        if (isConnected) {
-          continue;
-        }
+        if (isConnected) continue;
 
-        // Select a random predicate
-        const predIdx = Math.floor(
-          seededRandom() * ALL_CANDIDATE_PREDICATES.length
-        );
+        const predIdx = Math.floor(rng() * ALL_CANDIDATE_PREDICATES.length);
         const predicate = ALL_CANDIDATE_PREDICATES[predIdx];
 
         selectedPairKeys.add(pairKey1);
         selectedPairs.push({
           pairIndex: selectedPairs.length + 1,
           source: entityA.name,
-          sourceDomain:
-            entityA.domain || entityA.attributes?.domain || "General",
+          sourceDomain: entityA.domain || entityA.attributes?.domain || "General",
           predicate,
           target: entityB.name,
-          targetDomain:
-            entityB.domain || entityB.attributes?.domain || "General",
-          connection: `[Pair ${
-            selectedPairs.length + 1
-          }] [${entityA.name}] ----[${predicate}]---> [${
+          targetDomain: entityB.domain || entityB.attributes?.domain || "General",
+          connection: `[Pair ${selectedPairs.length + 1}] [${entityA.name}] ----[${predicate}]---> [${
             entityB.name
-          }] *(Disconnected Domains: ${
-            entityA.domain || "General"
-          } ↔ ${entityB.domain || "General"})*`,
+          }] *(Disconnected Domains: ${entityA.domain || "General"} ↔ ${entityB.domain || "General"})*`,
           isDisconnected: true,
           priorConnectionsCount: 0,
         });
@@ -314,7 +253,6 @@ export const brainstormIdeaTool = {
     // --------------------------------------------------------------------------
     // MODE 1: PREDICATE SWAPPING (predicate_swap)
     // --------------------------------------------------------------------------
-    // 1. Normalize keywords and parameters
     let rawKeywords = [];
     if (Array.isArray(args.keywords)) {
       rawKeywords = args.keywords.map((k) => String(k).trim()).filter(Boolean);
@@ -329,24 +267,17 @@ export const brainstormIdeaTool = {
         extracted.rawTerms.length > 0 ? extracted.rawTerms : [args.prompt.trim()];
     }
 
-    const maxGraphLength = Math.max(
-      1,
-      Math.min(Number(args.max_graph_length) || 6, 30)
-    );
-    const targetDomain = (args.targetDomain || "").trim();
+    const maxGraphLength = Math.max(1, Math.min(Number(args.max_graph_length) || 6, 30));
 
     if (rawKeywords.length === 0) {
       return {
         status: "error",
-        message:
-          "No keywords provided. Please specify one or more keywords to anchor the brainstorm.",
+        message: "No keywords provided. Please specify one or more keywords to anchor the brainstorm.",
       };
     }
 
-    // 2. Retrieve anchor entities using Cosine Similarity (MiniLM-style character n-gram cosine sim)
-    const allEntities = Array.from(kgService.entities.values()).filter(
-      (e) => e.isActive !== false
-    );
+    // Retrieve anchor entities using Cosine Similarity
+    const allEntities = Array.from(kgService.entities.values()).filter((e) => e.isActive !== false);
     const scoredEntities = [];
 
     for (const kw of rawKeywords) {
@@ -365,23 +296,9 @@ export const brainstormIdeaTool = {
           (nameLower.startsWith(kwLower) || kwLower.startsWith(nameLower))
         ) {
           simScore = 0.88;
-        } else if (nameLower.length >= 4 && kwLower.includes(nameLower)) {
-          const wordRegex = new RegExp(
-            `\\b${nameLower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-            "i"
-          );
-          if (wordRegex.test(kwLower)) {
-            simScore = 0.82;
-          } else {
-            simScore = computeSemanticSimilarity(kwLower, nameLower);
-          }
-        } else if (kwLower.length >= 4 && nameLower.includes(kwLower)) {
-          simScore = 0.82;
         } else {
           const simName = computeSemanticSimilarity(kwLower, nameLower);
-          const simDesc = descLower
-            ? computeSemanticSimilarity(kwLower, descLower.slice(0, 120)) * 0.7
-            : 0;
+          const simDesc = descLower ? computeSemanticSimilarity(kwLower, descLower.slice(0, 120)) * 0.7 : 0;
           simScore = Math.max(simName, simDesc);
         }
 
@@ -391,41 +308,23 @@ export const brainstormIdeaTool = {
       }
     }
 
-    // Sort by cosine similarity score descending
     scoredEntities.sort((a, b) => b.score - a.score);
 
-    // If no anchor entities found, return insufficient_knowledge guardrail
     if (scoredEntities.length === 0) {
-      const suggestedQueries = rawKeywords.map(
-        (k) => `${k} core thesis principles mechanisms`
-      );
+      const suggestedQueries = rawKeywords.map((k) => `${k} core thesis principles mechanisms`);
       return {
         status: "insufficient_knowledge",
         actionRequired: "SEARCH_AND_INDEX_THEN_RETRY",
         keywords: rawKeywords,
         missingTopics: rawKeywords,
-        instruction: `The Knowledge Graph lacks sufficient entity-relation connections for keywords: ${rawKeywords
-          .map((k) => `"${k}"`)
-          .join(
-            ", "
-          )}.\n\nTo construct a structurally grounded brainstorm:\n1. Use Google Search to look up: ${suggestedQueries
-          .map((q) => `"${q}"`)
-          .join(
-            ", "
-          )}.\n2. Call 'knowledge_graph_write' to index the key entities, mechanisms, and relationships into the Knowledge Graph.\n3. Re-run 'brainstorm_idea' with the keywords to generate the grounded synthesis.`,
+        instruction: `The Knowledge Graph lacks sufficient connections for keywords: ${rawKeywords.map((k) => `"${k}"`).join(", ")}. Use Google Search and 'knowledge_graph_write' to index key concepts.`,
         suggestedSearchQueries: suggestedQueries,
-        summary: `Knowledge Graph lacks relational facts for ${rawKeywords.join(
-          ", "
-        )}. Prompting agent to search web, index into KG, and retry.`,
+        summary: `Knowledge Graph lacks relational facts for ${rawKeywords.join(", ")}.`,
       };
     }
 
-    // 3. Contiguous Path Walk / Traversal of Length maxGraphLength starting from anchor node
-    const activeRelations = (kgService.relations || []).filter(
-      (r) => r.isActive !== false
-    );
-
-    // Fast adjacency map: nodeKey (id or lowercase name) -> list of incident relations
+    // Contiguous Path Walk
+    const activeRelations = (kgService.relations || []).filter((r) => r.isActive !== false);
     const adjMap = new Map();
     const addToAdj = (key, rel) => {
       if (!key) return;
@@ -441,7 +340,6 @@ export const brainstormIdeaTool = {
       if (rel.targetName) addToAdj(rel.targetName, rel);
     }
 
-    // Select the best starting anchor node from top scoring matches that has active connections
     const topCandidates = scoredEntities.slice(0, 10);
     const connectedCandidates = topCandidates.filter((c) => {
       const byId = (adjMap.get(c.entity.id.toLowerCase()) || []).length > 0;
@@ -449,46 +347,34 @@ export const brainstormIdeaTool = {
       return byId || byName;
     });
 
-    const candidatesToPick =
-      connectedCandidates.length > 0 ? connectedCandidates : topCandidates;
-    const startEntity =
-      candidatesToPick[Math.abs(seed) % candidatesToPick.length].entity;
+    const candidatesToPick = connectedCandidates.length > 0 ? connectedCandidates : topCandidates;
+    const startEntity = candidatesToPick[Math.abs(seed) % candidatesToPick.length].entity;
 
     const pathTriples = [];
-    const visitedEntities = new Set([
-      startEntity.id.toLowerCase(),
-      startEntity.name.toLowerCase(),
-    ]);
+    const visitedEntities = new Set([startEntity.id.toLowerCase(), startEntity.name.toLowerCase()]);
     const visitedEdges = new Set();
     let currentEntityId = startEntity.id;
     let currentEntityName = startEntity.name.toLowerCase();
 
     for (let step = 0; step < maxGraphLength; step++) {
-      const incidentEdgesById =
-        adjMap.get(currentEntityId.toLowerCase()) || [];
-      const incidentEdgesByName =
-        adjMap.get(currentEntityName) || [];
+      const incidentEdgesById = adjMap.get(currentEntityId.toLowerCase()) || [];
+      const incidentEdgesByName = adjMap.get(currentEntityName) || [];
 
       const edgeCandidateMap = new Map();
       for (const r of [...incidentEdgesById, ...incidentEdgesByName]) {
-        const edgeKey =
-          r.id || `${r.sourceName}:${r.predicate}:${r.targetName}`;
+        const edgeKey = r.id || `${r.sourceName}:${r.predicate}:${r.targetName}`;
         if (!visitedEdges.has(edgeKey)) {
           edgeCandidateMap.set(edgeKey, r);
         }
       }
       const incidentEdges = Array.from(edgeCandidateMap.values());
 
-      // Prioritize edges leading to unvisited neighbors to ensure long continuous traversal
       const unvisitedEdges = incidentEdges.filter((r) => {
         const isSourceCurrent =
           r.sourceId?.toLowerCase() === currentEntityId.toLowerCase() ||
-          (r.sourceName &&
-            r.sourceName.toLowerCase() === currentEntityName);
+          (r.sourceName && r.sourceName.toLowerCase() === currentEntityName);
         const otherId = (isSourceCurrent ? r.targetId : r.sourceId)?.toLowerCase();
-        const otherName = (
-          isSourceCurrent ? r.targetName : r.sourceName
-        )?.toLowerCase();
+        const otherName = (isSourceCurrent ? r.targetName : r.sourceName)?.toLowerCase();
         return (
           (!otherId || !visitedEntities.has(otherId)) &&
           (!otherName || !visitedEntities.has(otherName))
@@ -503,11 +389,9 @@ export const brainstormIdeaTool = {
         const idx = (Math.abs(seed) + step * 37) % incidentEdges.length;
         chosenEdge = incidentEdges[idx];
       } else {
-        // If current node is a dead-end, expand from previously visited entities on the path
         for (const vKey of visitedEntities) {
           const vEdges = (adjMap.get(vKey) || []).filter((r) => {
-            const edgeKey =
-              r.id || `${r.sourceName}:${r.predicate}:${r.targetName}`;
+            const edgeKey = r.id || `${r.sourceName}:${r.predicate}:${r.targetName}`;
             return !visitedEdges.has(edgeKey);
           });
           if (vEdges.length > 0) {
@@ -517,253 +401,134 @@ export const brainstormIdeaTool = {
             break;
           }
         }
-
-        // If local cluster is fully exhausted, jump to the next matching anchor entity to continue traversal
-        if (!chosenEdge) {
-          for (const candidate of topCandidates) {
-            const cId = candidate.entity.id.toLowerCase();
-            const cName = candidate.entity.name.toLowerCase();
-            if (!visitedEntities.has(cId) && !visitedEntities.has(cName)) {
-              const cEdges = (
-                adjMap.get(cId) ||
-                adjMap.get(cName) ||
-                []
-              ).filter((r) => {
-                const edgeKey =
-                  r.id || `${r.sourceName}:${r.predicate}:${r.targetName}`;
-                return !visitedEdges.has(edgeKey);
-              });
-              if (cEdges.length > 0) {
-                chosenEdge = cEdges[(Math.abs(seed) + step) % cEdges.length];
-                currentEntityId = cId;
-                currentEntityName = cName;
-                break;
-              }
-            }
-          }
-        }
-
-        if (!chosenEdge) break; // All available graph components exhausted
+        if (!chosenEdge) break;
       }
 
       const edgeKey =
-        chosenEdge.id ||
-        `${chosenEdge.sourceName}:${chosenEdge.predicate}:${chosenEdge.targetName}`;
+        chosenEdge.id || `${chosenEdge.sourceName}:${chosenEdge.predicate}:${chosenEdge.targetName}`;
       visitedEdges.add(edgeKey);
 
-      const sourceEntity = kgService.entities.get(chosenEdge.sourceId);
-      const targetEntity = kgService.entities.get(chosenEdge.targetId);
-      const sName =
-        chosenEdge.sourceName || sourceEntity?.name || chosenEdge.sourceId;
-      const tName =
-        chosenEdge.targetName || targetEntity?.name || chosenEdge.targetId;
-
-      pathTriples.push({
-        sourceId: chosenEdge.sourceId,
-        sourceName: sName,
-        predicate: chosenEdge.predicate,
-        targetId: chosenEdge.targetId,
-        targetName: tName,
-        description: chosenEdge.description,
-      });
-
-      const isSourceCurrent =
+      const isForward =
         chosenEdge.sourceId?.toLowerCase() === currentEntityId.toLowerCase() ||
         (chosenEdge.sourceName &&
           chosenEdge.sourceName.toLowerCase() === currentEntityName);
-      const nextId = isSourceCurrent
-        ? chosenEdge.targetId
-        : chosenEdge.sourceId;
-      const nextName = (isSourceCurrent ? tName : sName).toLowerCase();
+
+      const srcName = isForward
+        ? chosenEdge.sourceName || chosenEdge.source
+        : chosenEdge.targetName || chosenEdge.target;
+      const tgtName = isForward
+        ? chosenEdge.targetName || chosenEdge.target
+        : chosenEdge.sourceName || chosenEdge.source;
+      const nextId = isForward ? chosenEdge.targetId : chosenEdge.sourceId;
+
+      pathTriples.push({
+        source: srcName,
+        predicate: chosenEdge.predicate,
+        target: tgtName,
+        originalPredicate: chosenEdge.predicate,
+        step: step + 1,
+      });
 
       if (nextId) visitedEntities.add(nextId.toLowerCase());
-      if (nextName) visitedEntities.add(nextName);
-      currentEntityId = nextId || nextName;
-      currentEntityName = nextName;
+      if (tgtName) visitedEntities.add(tgtName.toLowerCase());
+      currentEntityId = nextId || tgtName;
+      currentEntityName = (tgtName || "").toLowerCase();
     }
 
-    // 4. Guardrail: If no connections could be traversed from the start node
     if (pathTriples.length === 0) {
-      const suggestedQueries = rawKeywords.map(
-        (k) => `${k} core thesis principles mechanisms`
-      );
       return {
         status: "insufficient_knowledge",
-        actionRequired: "SEARCH_AND_INDEX_THEN_RETRY",
-        keywords: rawKeywords,
-        missingTopics: rawKeywords,
-        instruction: `The starting Knowledge Graph anchor node [${startEntity.name}] has no active relational connections.\n\nTo construct a structurally grounded brainstorm:\n1. Use Google Search to look up: ${suggestedQueries
-          .map((q) => `"${q}"`)
-          .join(
-            ", "
-          )}.\n2. Call 'knowledge_graph_write' to index the key entities, mechanisms, and relationships into the Knowledge Graph.\n3. Re-run 'brainstorm_idea' with the keywords to generate the grounded synthesis.`,
-        suggestedSearchQueries: suggestedQueries,
-        summary: `Knowledge Graph node [${startEntity.name}] lacks relational connections. Prompting agent to search web, index into KG, and retry.`,
+        summary: `Could not traverse a continuous path from anchor "${startEntity.name}".`,
+        instruction: "Please ingest more connecting relations into the graph.",
       };
     }
 
-    // 5. Apply K Random Mutations along the traversed path
+    // Apply Predicate Swapping Mutations
+    const originalConnectionsList = pathTriples.map(
+      (t) => `[Hop ${t.step}] [${t.source}] ----(${t.predicate})---> [${t.target}]`
+    );
+
     const mutations = [];
-    const baseSubgraph = [];
-    const mutatedSubgraph = [];
+    const mutatedConnectionsList = [];
+    const numMutationsTarget = Math.max(1, Math.min(Math.ceil(pathTriples.length * 0.6), 5));
+    const mutationIndices = new Set();
 
-    // Deterministic pseudo-random generator from seed
-    const pseudoRandom = (offset) => {
-      const x = Math.sin(seed + offset * 9301 + 49297) * 233280;
-      return x - Math.floor(x);
-    };
-
-    let mutationCount = 0;
-    const mutateDecisions = pathTriples.map((_, i) => {
-      // If only 1 hop, mutate it. If multiple, mutate with probability ~0.55
-      const shouldMutate =
-        pathTriples.length === 1 || pseudoRandom(i) > 0.45;
-      if (shouldMutate) mutationCount++;
-      return shouldMutate;
-    });
-
-    // Guarantee at least 1 mutation if all rolled false
-    if (mutationCount === 0 && pathTriples.length > 0) {
-      const forcedIdx = Math.abs(seed) % pathTriples.length;
-      mutateDecisions[forcedIdx] = true;
-      mutationCount = 1;
+    while (mutationIndices.size < numMutationsTarget && mutationIndices.size < pathTriples.length) {
+      const idx = Math.floor(rng() * pathTriples.length);
+      mutationIndices.add(idx);
     }
 
-    pathTriples.forEach((triple, i) => {
-      baseSubgraph.push(triple);
-      const isMutated = mutateDecisions[i];
-
+    pathTriples.forEach((triple, idx) => {
+      const isMutated = mutationIndices.has(idx);
       if (isMutated) {
-        const { mutatedPredicate, mutationType, explanation } =
-          getMutatedPredicate(triple.predicate, seed + i);
+        const mutatedPredicate = getMutatedPredicate(triple.originalPredicate, rng);
         mutations.push({
-          step: i + 1,
-          source: triple.sourceName,
-          originalPredicate: triple.predicate,
+          step: idx + 1,
+          source: triple.source,
+          originalPredicate: triple.originalPredicate,
           mutatedPredicate,
-          target: triple.targetName,
+          target: triple.target,
           isMutated: true,
-          mutationType,
-          explanation,
+          explanation: `Swapped predicate '${triple.originalPredicate}' with orthogonal relation '${mutatedPredicate}'.`,
         });
-        mutatedSubgraph.push({
-          ...triple,
-          predicate: mutatedPredicate,
-          isMutated: true,
-        });
+        mutatedConnectionsList.push(
+          `[Hop ${idx + 1}] [${triple.source}] ----{${mutatedPredicate}}---> [${triple.target}] *(MUTATED from: ${triple.originalPredicate})*`
+        );
       } else {
         mutations.push({
-          step: i + 1,
-          source: triple.sourceName,
-          originalPredicate: triple.predicate,
-          mutatedPredicate: triple.predicate,
-          target: triple.targetName,
-          isMutated: false,
-          explanation: "Preserved continuous path connection.",
-        });
-        mutatedSubgraph.push({
-          ...triple,
+          step: idx + 1,
+          source: triple.source,
+          originalPredicate: triple.originalPredicate,
+          mutatedPredicate: triple.originalPredicate,
+          target: triple.target,
           isMutated: false,
         });
+        mutatedConnectionsList.push(
+          `[Hop ${idx + 1}] [${triple.source}] ----(${triple.originalPredicate})---> [${triple.target}]`
+        );
       }
     });
 
-    const mutatedTriplesSummary = mutations
-      .filter((m) => m.isMutated)
-      .map(
-        (m) =>
-          `[Hop ${m.step}] [${m.source}] -[${m.originalPredicate}]-> [${m.target}] => -[${m.mutatedPredicate}]-`
-      )
-      .join("; ");
-
-    const baseChainStr = baseSubgraph
-      .map(
-        (t, idx) =>
-          `[Hop ${idx + 1}] [${t.sourceName}] ----[${t.predicate}]---> [${t.targetName}]`
-      )
-      .join(" ↳ ");
-
-    const mutatedChainStr = mutatedSubgraph
-      .map(
-        (t, idx) =>
-          `[Hop ${idx + 1}] [${t.sourceName}] ----[${t.predicate}]---> [${t.targetName}]${
-            t.isMutated ? " *(MUTATED)*" : ""
-          }`
-      )
-      .join(" ↳ ");
-
-    const mutatedConnectionsList = mutations.map((m) =>
-      m.isMutated
-        ? `[Hop ${m.step}] [${m.source}] ----[${m.mutatedPredicate}]---> [${m.target}] *(MUTATED from ${m.originalPredicate}: ${m.explanation || "Inversion"})*`
-        : `[Hop ${m.step}] [${m.source}] ----[${m.originalPredicate}]---> [${m.target}] *(Preserved Path Context)*`
-    );
-
-    // Track which input keywords were actually found vs unfound
     const foundKeywords = [];
     const unfoundKeywords = [];
-
     for (const kw of rawKeywords) {
-      const kwMatches = scoredEntities.filter((s) => s.matchedKeyword === kw);
-      if (kwMatches.length > 0) {
+      const m = scoredEntities.find((se) => se.matchedKeyword.toLowerCase() === kw.toLowerCase());
+      if (m) {
         foundKeywords.push({
           keyword: kw,
-          matchedNode: kwMatches[0].entity.name,
-          score: Number(kwMatches[0].score.toFixed(3)),
-          domain:
-            kwMatches[0].entity.domain ||
-            kwMatches[0].entity.attributes?.domain ||
-            "General",
+          matchedNode: m.entity.name,
+          nodeId: m.entity.id,
+          domain: m.entity.domain || m.entity.attributes?.domain || "General",
         });
       } else {
         unfoundKeywords.push(kw);
       }
     }
 
-    const originalNonMutatedConnectionsList = baseSubgraph.map(
-      (t, idx) =>
-        `[Hop ${idx + 1}] [${t.sourceName}] ----[${t.predicate}]---> [${t.targetName}]`
-    );
-
-    const originalNonMutatedGraph = {
-      startAnchorNode: startEntity.name,
-      pathLength: pathTriples.length,
-      basePathChain: baseChainStr,
-      connectionsList: originalNonMutatedConnectionsList,
-    };
-
-    const mutatedGraph = {
-      startAnchorNode: startEntity.name,
-      pathLength: pathTriples.length,
-      mutatedHopsCount: mutationCount,
-      preservedHopsCount: pathTriples.length - mutationCount,
-      mutatedPathChain: mutatedChainStr,
-      mutatedConnectionsList,
-      mutations,
-    };
-
     return {
       status: "success",
-      technique: "predicate_swap",
+      mode: "predicate_swap",
+      seedUsed: seed,
+      startAnchorNode: startEntity.name,
       foundKeywords,
       unfoundKeywords,
-      originalNonMutatedGraph,
-      mutatedGraph,
-      keywords: rawKeywords,
-      startAnchorNode: startEntity.name,
-      seedUsed: seed,
-      requestedPathLength: maxGraphLength,
-      actualTraversedHops: pathTriples.length,
-      mutatedHopsCount: mutationCount,
-      preservedHopsCount: pathTriples.length - mutationCount,
-      basePathChain: baseChainStr,
-      mutatedPathChain: mutatedChainStr,
-      mutations,
+      mutatedGraph: {
+        pathLength: pathTriples.length,
+        mutatedHopsCount: mutationIndices.size,
+        preservedHopsCount: pathTriples.length - mutationIndices.size,
+        mutations,
+        mutatedConnectionsList,
+      },
+      originalNonMutatedGraph: {
+        pathLength: pathTriples.length,
+        connectionsList: originalConnectionsList,
+      },
       mutatedConnectionsList,
       verificationGuidance:
         "Verify whether a valid idea can be made or not. Otherwise, re-run the brainstorm tool.",
       instruction:
-        "Analyze the found keywords, original non-mutated graph, and mutated connections list above. Verify whether a valid, breakthrough idea can be made from these counterfactual relationships. If a valid idea can be synthesized, generate the complete, deep proposal for the user. Otherwise, re-run 'brainstorm_idea' with a different seed, adjusted keywords, or changed max_graph_length.",
-      summary: `Extracted ${pathTriples.length}-hop path from [${startEntity.name}] with ${mutationCount} mutated predicates (${mutatedTriplesSummary}) [Seed: ${seed}]. Found keywords: [${foundKeywords.map((f) => f.keyword).join(", ")}]. Verify whether a valid idea can be made or not. Otherwise, re-run the brainstorm tool.`,
+        "The response above provides a counterfactual Knowledge Graph path with randomized predicate swaps. Verify whether a valid idea can be made. If valid, synthesize the concept for the user; otherwise, re-run with another seed.",
+      summary: `Traversed ${pathTriples.length}-hop path anchored at "${startEntity.name}" and applied ${mutationIndices.size} predicate mutations [Seed: ${seed}].`,
     };
   },
 };
